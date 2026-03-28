@@ -4,12 +4,12 @@
         
         <div class="form-group">
             <label>Date</label>
-            <input type="date" value="@entryDate" @onchange="@((ChangeEventArgs e) => entryDate = e.Value?.ToString() ?? "")" class="form-control" />
+            <input type="date" value="@entryDate" @onchange="@((ChangeEventArgs e) => entryDate = e.Value?.ToString() ?? "")" class="form-control" @onkeydown="HandleKeyDown" />
         </div>
 
         <div class="form-group">
             <label>Start Time</label>
-            <select @bind="entryStartTime" class="form-control">
+            <select @bind="entryStartTime" class="form-control" @onkeydown="HandleKeyDown">
                 @foreach (var t in timeOptions)
                 {
                     <option value="@t">@t</option>
@@ -19,7 +19,7 @@
 
         <div class="form-group">
             <label>Task Type</label>
-            <select @bind="Entry.Type" class="form-control">
+            <select @bind="Entry.Type" class="form-control" @onkeydown="HandleKeyDown">
                 @foreach (TaskType type in Enum.GetValues(typeof(TaskType)))
                 {
                     <option value="@type">@type</option>
@@ -31,18 +31,18 @@
         {
             <div class="form-group">
                 <label>Ticket</label>
-                <input type="text" @bind="Entry.Ticket" class="form-control" placeholder="JIRA-123" />
+                <input type="text" @bind="Entry.Ticket" @bind:event="oninput" class="form-control" placeholder="JIRA-123" @onkeydown="HandleKeyDown" />
             </div>
         }
 
         <div class="form-group">
             <label>Description</label>
-            <input type="text" @bind="Entry.Description" class="form-control" maxlength="100" />
+            <input type="text" @bind="Entry.Description" @bind:event="oninput" class="form-control" maxlength="100" @onkeydown="HandleKeyDown" />
         </div>
 
         <div class="form-group">
             <label>Target Hours</label>
-            <select @bind="entryTargetHours" class="form-control">
+            <select @bind="entryTargetHours" class="form-control" @onkeydown="HandleKeyDown">
                 @foreach (var t in targetHourOptions)
                 {
                     <option value="@t">@t</option>
@@ -84,6 +84,14 @@
         entryDate = Entry.Date;
         entryStartTime = NormalizeTime(Entry.StartTime);
         entryTargetHours = NormalizeTime(Entry.DayTargetHhmm);
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await Save();
+        }
     }
 
     private async Task Save()

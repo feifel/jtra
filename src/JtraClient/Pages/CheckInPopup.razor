@@ -6,7 +6,7 @@
         
         <div class="form-group">
             <label>Time</label>
-            <select @bind="selectedTime" class="form-control">
+            <select @bind="selectedTime" class="form-control" @onkeydown="HandleKeyDown">
                 @foreach (var t in timeOptions)
                 {
                     <option value="@t">@t</option>
@@ -16,7 +16,7 @@
         
         <div class="form-group">
             <label>Task Type</label>
-            <select @bind="selectedType" class="form-control">
+            <select @bind="selectedType" class="form-control" @onkeydown="HandleKeyDown">
                 <option value="@TaskType.Ticket">Ticket</option>
                 <option value="@TaskType.Break">Break</option>
                 @foreach (var configType in AppState.Settings.ConfigurableTypes.Where(c => c.Enabled))
@@ -30,20 +30,20 @@
         {
             <div class="form-group">
                 <label>Ticket</label>
-                <input type="text" @bind="ticket" class="form-control" placeholder="JIRA-123" />
+                <input type="text" @bind="ticket" @bind:event="oninput" class="form-control" placeholder="JIRA-123" @onkeydown="HandleKeyDown" />
             </div>
         }
         else if (HasLinkedTicket(selectedType))
         {
             <div class="form-group">
                 <label>Ticket</label>
-                <input type="text" value="@GetLinkedTicket(selectedType)" class="form-control" readonly />
+                <input type="text" value="@GetLinkedTicket(selectedType)" class="form-control" readonly @onkeydown="HandleKeyDown" />
             </div>
         }
 
         <div class="form-group">
             <label>Description</label>
-            <input type="text" @bind="description" class="form-control" maxlength="100" placeholder="What are you working on?" />
+            <input type="text" @bind="description" @bind:event="oninput" class="form-control" maxlength="100" placeholder="What are you working on?" @onkeydown="HandleKeyDown" />
         </div>
 
         <div class="popup-actions">
@@ -118,6 +118,14 @@
         else
         {
             description = GetDefaultDescription(selectedType);
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await Confirm();
         }
     }
 
