@@ -18,7 +18,7 @@ JTRA is a cross-platform web application that reminds the user every 15 minutes 
 | Styling | **Blazor default styling** | Simple, no additional CSS framework required |
 | Time data | **IndexedDB** (browser) | Data stored locally in each user's browser; no server-side storage |
 | Settings | **IndexedDB** (browser) | Per-user settings stored locally |
-| Secrets (JIRA PAT) | **IndexedDB** (browser) | Stored per-user, never sent to server except as Bearer token for API calls |
+| Secrets (JIRA PAT) | **IndexedDB** (browser) | Stored per-user; sent to server with each JIRA API request as Bearer token |
 | Background timer | **Server-side BackgroundService** | Reliable timer aligned to clock boundaries (`hh:00/15/30/45`) |
 | Real-time communication | **SignalR** | Server pushes timer events to all connected browsers |
 | Notifications | **Web Notifications API** | System-level notifications (Windows Action Center, macOS Notification Center, Linux notifications) when timer fires; works like Outlook web app |
@@ -90,10 +90,10 @@ docker build -t jtra-server .
 - The timer fires at **fixed clock boundaries**: `hh:00`, `hh:15`, `hh:30`, `hh:45` — regardless of when the app was started or when the last confirmation occurred.
   - On startup, the timer calculates the time until the next boundary and schedules the first firing accordingly.
   - Example: if the app starts at 09:23, the first popup fires at 09:30.
-- **On app startup**, a check-in popup is always shown asking the user what they are working on. If the user is continuing their previous task, they can simply confirm it. If there's no previous task (first-time user), the popup shows empty fields for the user to fill in.
+- **On app startup**, a check-in popup is always shown asking the user what they are working on. The popup shows empty fields (no pre-fill from previous session). If the user is continuing their previous task, they can simply confirm it without creating a new entry.
 - A **browser notification** is shown when the timer fires: "Time to check in: What are you working on?"
 - A **modal dialog** appears in the browser UI (triggered via SignalR from server).
-- **The current task is shown prominently** as the default selection.
+- **For periodic check-ins (every 15 minutes)**, the current task is shown prominently as the default selection.
 - The user can:
   - Press **Enter** (or click Confirm) to continue the current task unchanged.
   - Change the **type** to switch activity category (e.g. from `Ticket` to `Meetings`).
@@ -128,7 +128,7 @@ The client stores its current task in IndexedDB (`connection_state` store) befor
 1. Reads the last entry from IndexedDB to determine what was being tracked
 2. Compares the last entry's start time with the current time
 3. If there's a time gap (user was away), displays a **non-intrusive indicator** in the UI: "Last tracked: XX:XX. Add missing entries?"
-4. User can click to add entries for the gap period, or ignore it
+4. User can click the indicator to open a simple entry form for the gap period with no pre-filled values
 
 The server does not track client disconnect/reconnect. The user is responsible for filling any gaps in their time tracking. This keeps the architecture simple and puts the user in control.
 
@@ -216,19 +216,12 @@ When the user opens the app or logs their first task of a new calendar day, a da
 - **Target hours** for today — defaults to `08:00` (configurable), editable for this specific day (e.g. `04:00` for a half-day holiday)
 - The per-day override is stored in IndexedDB keyed by date (`YYYY-MM-DD`)
 
-**Cross-midnight handling**: If the previous day's last task was not a `Break`, a new entry is automatically created starting at `00:00:00` on the new day with the same task details. This ensures tasks don't span across multiple days. If the previous task was a `Break`, no automatic entry is created.
+**Cross-midnight handling**: If the previous day's last task was not a `Break`, a new entry is automatically created starting at `00:00:00` on the new day with the same task details. This ensures tasks don't span across multiple days — for JIRA worklog submission, each entry has a clear date. For example, if a user works from 22:00 to 01:00, two entries are created: 2 hours on the previous day and 1 hour on the new day. If the previous task was a `Break`, no automatic entry is created.
 
 ### 3.4 Time Rounding
 
-All slot durations are **rounded up to the next 15-minute boundary** and stored in `HH:mm` format:
+All slot durations are **rounded to the nearest 15-minute boundary** and stored in `HH:mm` format:
 
-| Actual elapsed | Recorded duration |
-|---|---|
-| 00m 00s – 07m 00s | 00:00 |
-| 07m 01s – 22m 00s | 00:15 |
-| 22m 01s – 37m 00s | 00:30 |
-| 37m 01s – 52m 00s | 00:45 |
-| 52m 01s – 67m 00s | 01:00 |
 
 Start times are also **rounded to the nearest 15-minute boundary**. For example:
 - 09:07 → 09:00
@@ -252,7 +245,7 @@ Both rounded start time and rounded duration are stored in IndexedDB.
 |---|---|---|
 | `id` | auto-increment | Primary key |
 | `date` | `YYYY-MM-DD` | Calendar date of the entry |
-| `start_time` | `HH:mm:ss` | Rounded start time of the slot (rounded to nearest 15-min boundary); end time is calculated from the next entry's start time |
+| `start_time` | `HH:mm` | Rounded start time of the slot (rounded to nearest 15-min boundary); end time is calculated from the next entry's start time |
 | `type` | string | Entry type: `Ticket`, `Break`, `Messages`, `Support`, `Meetings`, `ChangeMgmt`, `Reviews`, `Training`, `Other` (or a user-renamed label) |
 | `ticket` | string | JIRA ticket number (only populated when `type = Ticket` or a configurable type with a linked ticket), otherwise empty |
 | `description` | string | User-entered description (max 100 chars) |
@@ -267,8 +260,10 @@ Both rounded start time and rounded duration are stored in IndexedDB.
 **settings**
 | Field | Type | Description |
 |---|---|---|
-| `key` | string | Setting key (e.g., `jiraBaseUrl`, `defaultTargetHours`) |
-| `value` | any | Setting value |
+| `key` | string | Setting key (e.g., `jiraBaseUrl`, `defaultTargetHours`, `configurableTypes`) |
+| `value` | any | Setting value (primitive types or JSON objects for complex settings like `configurableTypes`) |
+
+> **Note:** Configurable types are stored as a single JSON object under the `configurableTypes` key, making import/export straightforward.
 
 **ticket_cache**
 | Field | Type | Description |
@@ -369,6 +364,7 @@ The check-in popup is displayed as a modal dialog in the browser when the server
 - The user selects a **date range** (defaults to today).
 - The app groups consecutive entries that share **both the same JIRA ticket key AND the same description text** into a single worklog entry. If the same ticket appears with two different descriptions (e.g. two separate tasks on `PROJ-55`), they are submitted as **two separate worklog entries**.
   - Grouping rule: entries are grouped only when they are consecutive **and** both `ticket` and `description` match exactly.
+  - **Entries from different days are never grouped** — each day's entries are submitted separately with their respective dates.
   - Example: `PROJ-55 / "Write spec"` at 10:00 + `PROJ-55 / "Write spec"` at 10:15 → one worklog of 00:30.
   - Example: `PROJ-55 / "Write spec"` at 10:00 + `PROJ-55 / "Code review"` at 10:15 → two separate worklogs.
 - A **preview table** is shown before submission. The user can confirm or cancel.
@@ -482,6 +478,8 @@ Built-in types (`Ticket`, `Break`) are shown as read-only and cannot be disabled
 Authorization: Bearer <PAT>
 ```
 PAT is a Personal Access Token generated by the user in their JIRA profile (supported in JIRA Data Center 8.14+ and JIRA Cloud).
+
+**PAT handling**: The PAT is stored in the browser's IndexedDB. When the client needs to call a JIRA API, it sends the PAT to the server as part of the request. The server includes it as a Bearer token in the JIRA API call. The server never stores the PAT — it's only held in memory for the duration of the API request.
 
 ### Ticket Summary Lookup (cached)
 ```
@@ -691,7 +689,13 @@ jtra/
 | 21 | Should description be pre-filled with previous value? | **No** — description is empty by default when starting a new task. |
 | 22 | Should custom next popup time persist across sessions? | **No** — stored in memory only. On app restart, normal 15-minute boundary scheduling applies. |
 | 23 | What happens on app startup? | **Always show check-in popup** — user confirms current task or enters new task. First-time users see empty fields. |
-| 24 | How to handle tasks spanning midnight? | **Auto-create new entry** — if previous day's last task was not a `Break`, create a new entry at `00:00:00` on the new day with same task details. |
+| 24 | How to handle tasks spanning midnight? | **Auto-create new entry** — if previous day's last task was not a `Break`, create a new entry at `00:00:00` on the new day with same task details. This ensures each JIRA worklog has a clear date. |
+| 25 | Duration rounding for first interval (00:00 – 07:00)? | **Round to nearest boundary** — whichever is closer to current time: `00:00` or `00:15`. |
+| 26 | Should worklog entries be grouped across days? | **No** — entries from different days are never grouped. Each day's entries are submitted separately. |
+| 27 | How is PAT transmitted to server? | **Sent with each API request** — client sends PAT to server, server uses it as Bearer token for JIRA API call, then discards it. Server never stores PAT. |
+| 28 | How are configurable types stored? | **Single JSON object** under `configurableTypes` key in settings store. Enables easy import/export. |
+| 29 | What UI for gap entry addition? | **Simple entry form** with no pre-filled values. User fills in type, ticket (if applicable), and description. |
+| 30 | Should startup popup pre-fill previous task? | **No** — popup always shows empty fields. If same task continues, user confirms without creating a new entry. |
 
 ---
 
