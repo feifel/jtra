@@ -20,7 +20,7 @@ public class TimerHubClient : IAsyncDisposable
     public async Task StartAsync(string serverUrl)
     {
         _hubConnection = new HubConnectionBuilder()
-            .WithUrl($"{serverUrl}/timerHub")
+            .WithUrl($"{serverUrl.TrimEnd('/')}/timerHub")
             .WithAutomaticReconnect(new[] { TimeSpan.FromSeconds(0), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10) })
             .Build();
 
