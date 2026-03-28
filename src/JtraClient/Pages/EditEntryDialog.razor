@@ -1,0 +1,88 @@
+<div class="popup-overlay">
+    <div class="popup-content">
+        <h3>Edit Entry</h3>
+        
+        <div class="form-group">
+            <label>Date</label>
+            <input type="date" value="@entryDate" @onchange="@((ChangeEventArgs e) => entryDate = e.Value?.ToString() ?? "")" class="form-control" />
+        </div>
+
+        <div class="form-group">
+            <label>Start Time</label>
+            <input type="time" value="@entryStartTime" @onchange="@((ChangeEventArgs e) => entryStartTime = e.Value?.ToString() ?? "")" class="form-control" />
+        </div>
+
+        <div class="form-group">
+            <label>Task Type</label>
+            <select @bind="Entry.Type" class="form-control">
+                @foreach (TaskType type in Enum.GetValues(typeof(TaskType)))
+                {
+                    <option value="@type">@type</option>
+                }
+            </select>
+        </div>
+
+        @if (Entry.Type == TaskType.Ticket)
+        {
+            <div class="form-group">
+                <label>Ticket</label>
+                <input type="text" @bind="Entry.Ticket" class="form-control" placeholder="JIRA-123" />
+            </div>
+        }
+
+        <div class="form-group">
+            <label>Description</label>
+            <input type="text" @bind="Entry.Description" class="form-control" maxlength="100" />
+        </div>
+
+        <div class="form-group">
+            <label>Target Hours</label>
+            <input type="time" value="@entryTargetHours" @onchange="@((ChangeEventArgs e) => entryTargetHours = e.Value?.ToString() ?? "")" class="form-control" />
+        </div>
+
+        <div class="popup-actions">
+            <button class="btn btn-primary" @onclick="Save">Save</button>
+            @if (Entry.Id > 0)
+            {
+                <button class="btn btn-danger" @onclick="Delete">Delete</button>
+            }
+            <button class="btn btn-secondary" @onclick="Close">Cancel</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public TimeEntry Entry { get; set; } = new();
+    [Parameter] public EventCallback<TimeEntry> OnSave { get; set; }
+    [Parameter] public EventCallback<int> OnDelete { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string entryDate = DateTime.Today.ToString("yyyy-MM-dd");
+    private string entryStartTime = "09:00";
+    private string entryTargetHours = "08:00";
+
+    protected override void OnParametersSet()
+    {
+        entryDate = Entry.Date;
+        entryStartTime = Entry.StartTime;
+        entryTargetHours = Entry.DayTargetHhmm;
+    }
+
+    private async Task Save()
+    {
+        Entry.Date = entryDate;
+        Entry.StartTime = entryStartTime;
+        Entry.DayTargetHhmm = entryTargetHours;
+        await OnSave.InvokeAsync(Entry);
+    }
+
+    private async Task Delete()
+    {
+        await OnDelete.InvokeAsync(Entry.Id);
+    }
+
+    private async Task Close()
+    {
+        await OnClose.InvokeAsync();
+    }
+}

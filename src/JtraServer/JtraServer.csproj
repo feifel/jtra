@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.SignalR" Version="1.2.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\JtraShared\JtraShared.csproj" />
+
+  </ItemGroup>
+
+  <Target Name="PublishBlazorClient" AfterTargets="Build">
+    <PropertyGroup>
+      <BlazorClientDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../JtraClient'))</BlazorClientDir>
+      <BlazorClientPublishDir>$(BlazorClientDir)/bin/BlazorPublish</BlazorClientPublishDir>
+    </PropertyGroup>
+    <Exec Command="dotnet publish &quot;$(BlazorClientDir)/JtraClient.csproj&quot; -c $(Configuration) -o &quot;$(BlazorClientPublishDir)&quot; --nologo -v quiet" />
+    <ItemGroup>
+      <BlazorPublishedFiles Include="$(BlazorClientPublishDir)/wwwroot/**/*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(BlazorPublishedFiles)"
+          DestinationFolder="$(MSBuildThisFileDirectory)wwwroot/%(BlazorPublishedFiles.RecursiveDir)" />
+  </Target>
+
+</Project>

@@ -1,0 +1,93 @@
+using JtraShared.Models;
+using System.Text;
+
+namespace JtraClient.Services;
+
+public class CsvExportService
+{
+    public string ExportToCsv(List<TimeEntry> entries)
+    {
+        var sb = new StringBuilder();
+        
+        sb.AppendLine("date,start_time,type,ticket,description,duration,day_accumulated_hhmm,day_accumulated_days,day_target_hhmm,day_deviation_hhmm,day_deviation_days,submitted_to_jira");
+
+        foreach (var entry in entries.OrderByDescending(e => e.Date).ThenByDescending(e => e.StartTime))
+        {
+            sb.AppendLine($"{entry.Date},{entry.StartTime},{entry.Type},{EscapeCsv(entry.Ticket)},{EscapeCsv(entry.Description)},{entry.Duration},{entry.DayAccumulatedHhmm},{entry.DayAccumulatedDays},{entry.DayTargetHhmm},{entry.DayDeviationHhmm},{entry.DayDeviationDays},{entry.SubmittedToJira}");
+        }
+
+        return sb.ToString();
+    }
+
+    public List<TimeEntry> ImportFromCsv(string csvContent)
+    {
+        var entries = new List<TimeEntry>();
+        var lines = csvContent.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        
+        for (int i = 1; i < lines.Length; i++)
+        {
+            var line = lines[i].Trim();
+            if (string.IsNullOrEmpty(line)) continue;
+
+            var parts = ParseCsvLine(line);
+            if (parts.Length < 12) continue;
+
+            var entry = new TimeEntry
+            {
+                Date = parts[0],
+                StartTime = parts[1],
+                Type = Enum.Parse<TaskType>(parts[2]),
+                Ticket = parts[3],
+                Description = parts[4],
+                Duration = parts[5],
+                DayAccumulatedHhmm = parts[6],
+                DayAccumulatedDays = string.IsNullOrEmpty(parts[7]) ? null : double.Parse(parts[7]),
+                DayTargetHhmm = parts[8],
+                DayDeviationHhmm = parts[9],
+                DayDeviationDays = string.IsNullOrEmpty(parts[10]) ? null : double.Parse(parts[10]),
+                SubmittedToJira = bool.Parse(parts[11])
+            };
+
+            entries.Add(entry);
+        }
+
+        return entries;
+    }
+
+    private static string EscapeCsv(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return "";
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+        {
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        }
+        return value;
+    }
+
+    private static string[] ParseCsvLine(string line)
+    {
+        var result = new List<string>();
+        var current = new StringBuilder();
+        bool inQuotes = false;
+
+        foreach (char c in line)
+        {
+            if (c == '"')
+            {
+                inQuotes = !inQuotes;
+            }
+            else if (c == ',' && !inQuotes)
+            {
+                result.Add(current.ToString());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(c);
+            }
+        }
+
+        result.Add(current.ToString());
+        return result.ToArray();
+    }
+}

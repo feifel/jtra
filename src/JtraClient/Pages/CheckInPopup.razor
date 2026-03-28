@@ -1,0 +1,130 @@
+@inject AppState AppState
+
+<div class="popup-overlay" @onclick="OnOverlayClick">
+    <div class="popup-content" @onclick:stopPropagation="true">
+        <h3>Check-in: @DateTime.Now.ToString("HH:mm")</h3>
+        
+        <div class="form-group">
+            <label>Task Type</label>
+            <select @bind="selectedType" class="form-control">
+                <option value="@TaskType.Ticket">Ticket</option>
+                <option value="@TaskType.Break">Break</option>
+                @foreach (var configType in AppState.Settings.ConfigurableTypes.Where(c => c.Enabled))
+                {
+                    <option value="@configType.Type">@configType.DisplayName</option>
+                }
+            </select>
+        </div>
+
+        @if (selectedType == TaskType.Ticket)
+        {
+            <div class="form-group">
+                <label>Ticket</label>
+                <input type="text" @bind="ticket" class="form-control" placeholder="JIRA-123" />
+            </div>
+        }
+        else if (HasLinkedTicket(selectedType))
+        {
+            <div class="form-group">
+                <label>Ticket</label>
+                <input type="text" value="@GetLinkedTicket(selectedType)" class="form-control" readonly />
+            </div>
+        }
+
+        <div class="form-group">
+            <label>Description (optional)</label>
+            <input type="text" @bind="description" class="form-control" maxlength="100" placeholder="What are you working on?" />
+        </div>
+
+        <div class="popup-actions">
+            <button class="btn btn-primary" @onclick="Confirm">Confirm</button>
+            <button class="btn btn-secondary" @onclick="ShowSnooze">Snooze</button>
+        </div>
+
+        @if (showSnoozePicker)
+        {
+            <div class="snooze-picker">
+                <label>Snooze until:</label>
+                <input type="time" value="@snoozeTimeStr" @onchange="@((ChangeEventArgs e) => snoozeTimeStr = e.Value?.ToString() ?? "")" class="form-control" />
+                <button class="btn btn-sm btn-secondary" @onclick="ConfirmSnooze">OK</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="CancelSnooze">Cancel</button>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback<(TaskType type, string? ticket, string? description)> OnConfirm { get; set; }
+    [Parameter] public EventCallback<DateTime> OnSnoozeCallback { get; set; }
+
+    private TaskType selectedType = TaskType.Ticket;
+    private string? ticket;
+    private string? description;
+    private bool showSnoozePicker;
+    private string snoozeTimeStr = DateTime.Now.AddHours(1).ToString("HH:mm");
+
+    private bool HasLinkedTicket(TaskType type)
+    {
+        var configType = AppState.Settings.ConfigurableTypes.FirstOrDefault(c => c.Type == type);
+        return configType != null && !string.IsNullOrEmpty(configType.LinkedTicket);
+    }
+
+    private string? GetLinkedTicket(TaskType type)
+    {
+        var configType = AppState.Settings.ConfigurableTypes.FirstOrDefault(c => c.Type == type);
+        return configType?.LinkedTicket;
+    }
+
+    private async Task Confirm()
+    {
+        string? ticketValue = selectedType == TaskType.Ticket ? ticket : GetLinkedTicket(selectedType);
+        await OnConfirm.InvokeAsync((selectedType, ticketValue, description));
+    }
+
+    private void ShowSnooze()
+    {
+        snoozeTimeStr = DateTime.Now.AddMinutes(15).ToString("HH:mm");
+        showSnoozePicker = true;
+    }
+
+    private async Task ConfirmSnooze()
+    {
+        var timeParts = snoozeTimeStr.Split(':');
+        var hours = int.Parse(timeParts[0]);
+        var minutes = int.Parse(timeParts[1]);
+        
+        var snoozeDateTime = DateTime.Today.AddHours(hours).AddMinutes(minutes);
+        if (snoozeDateTime < DateTime.Now)
+        {
+            snoozeDateTime = snoozeDateTime.AddDays(1);
+        }
+        
+        var maxSnooze = DateTime.Now.AddHours(AppState.Settings.MaxSnoozeHours);
+        if (snoozeDateTime > maxSnooze)
+        {
+            snoozeDateTime = maxSnooze;
+        }
+        
+        await OnSnoozeCallback.InvokeAsync(snoozeDateTime);
+        showSnoozePicker = false;
+    }
+
+    private void CancelSnooze()
+    {
+        showSnoozePicker = false;
+    }
+
+    private void OnOverlayClick()
+    {
+    }
+
+    protected override void OnInitialized()
+    {
+        if (AppState.CurrentTask != null)
+        {
+            selectedType = AppState.CurrentTask.Type;
+            ticket = AppState.CurrentTask.Ticket;
+            description = AppState.CurrentTask.Description;
+        }
+    }
+}

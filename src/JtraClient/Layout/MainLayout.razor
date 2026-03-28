@@ -1,0 +1,50 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main>
+        <div class="top-row px-4">
+            <span class="next-checkin">Next check-in: @AppState.NextCheckInTime</span>
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+@if (ShowCheckInPopup)
+{
+    <CheckInPopup OnConfirm="HandleCheckInConfirm" OnSnoozeCallback="HandleSnooze" />
+}
+
+@code {
+    [Inject] private AppState AppState { get; set; } = default!;
+    [Inject] private NotificationService NotificationService { get; set; } = default!;
+
+    private bool ShowCheckInPopup => AppState.ShowCheckInPopup;
+
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+    }
+
+    private async Task HandleCheckInConfirm((TaskType type, string? ticket, string? description) args)
+    {
+        await AppState.ConfirmCheckIn(args.type, args.ticket, args.description);
+    }
+
+    private async Task HandleSnooze(DateTime snoozeUntil)
+    {
+        await AppState.SetSnooze(snoozeUntil);
+    }
+}

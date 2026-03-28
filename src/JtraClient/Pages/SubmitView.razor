@@ -1,0 +1,234 @@
+@page "/submit"
+@implements IDisposable
+
+<PageTitle>JTRA - Submit to JIRA</PageTitle>
+
+<h2>Submit Worklogs to JIRA</h2>
+
+@if (string.IsNullOrEmpty(AppState.Settings.JiraBaseUrl) || string.IsNullOrEmpty(AppState.Settings.Pat))
+{
+    <div class="alert alert-warning">
+        Please configure your JIRA URL and PAT in <a href="/settings">Settings</a> first.
+    </div>
+}
+else
+{
+    <div class="submit-info">
+        <p>Select entries to submit as worklogs to JIRA.</p>
+        <p>Consecutive entries with the same ticket and description will be grouped.</p>
+    </div>
+
+    <div class="entries-selection">
+        <button class="btn btn-outline-primary" @onclick="SelectAllPending">Select All Pending</button>
+        <button class="btn btn-outline-secondary" @onclick="ClearSelection">Clear Selection</button>
+    </div>
+
+    @if (pendingEntries.Any())
+    {
+        <div class="entries-list">
+            @foreach (var entry in pendingEntries)
+            {
+                <div class="entry-row @(selectedEntries.Contains(entry.Id) ? "selected" : "")" @onclick="() => ToggleSelection(entry.Id)">
+                    <div class="entry-check">
+                        <input type="checkbox" checked="@selectedEntries.Contains(entry.Id)" @onclick:stopPropagation="true" @onchange="() => ToggleSelection(entry.Id)" />
+                    </div>
+                    <div class="entry-date">@entry.Date</div>
+                    <div class="entry-time">@entry.StartTime</div>
+                    <div class="entry-ticket">@entry.Ticket</div>
+                    <div class="entry-description">@entry.Description</div>
+                    <div class="entry-duration">@entry.Duration</div>
+                </div>
+            }
+        </div>
+
+        <div class="actions">
+            <button class="btn btn-primary" @onclick="SubmitSelected" disabled="@submitting">
+                @if (submitting)
+                {
+                    <span>Submitting...</span>
+                }
+                else
+                {
+                    <span>Submit @selectedEntries.Count Entries</span>
+                }
+            </button>
+        </div>
+    }
+    else
+    {
+        <p class="no-pending">No pending entries to submit.</p>
+    }
+}
+
+@if (!string.IsNullOrEmpty(submitResult))
+{
+    <div class="alert alert-info">@submitResult</div>
+}
+
+@code {
+    [Inject] private AppState AppState { get; set; } = default!;
+    [Inject] private HttpClient Http { get; set; } = default!;
+    [Inject] private IndexedDbService IndexedDb { get; set; } = default!;
+
+    private List<TimeEntry> pendingEntries = new();
+    private HashSet<int> selectedEntries = new();
+    private bool submitting = false;
+    private string? submitResult;
+
+    protected override void OnInitialized()
+    {
+        LoadPendingEntries();
+        AppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+    }
+
+    private void LoadPendingEntries()
+    {
+        pendingEntries = AppState.AllEntries
+            .Where(e => e.Type == TaskType.Ticket && !e.SubmittedToJira && !string.IsNullOrEmpty(e.Ticket) && !string.IsNullOrEmpty(e.Duration))
+            .OrderByDescending(e => e.Date)
+            .ThenByDescending(e => e.StartTime)
+            .ToList();
+    }
+
+    private void ToggleSelection(int id)
+    {
+        if (selectedEntries.Contains(id))
+        {
+            selectedEntries.Remove(id);
+        }
+        else
+        {
+            selectedEntries.Add(id);
+        }
+        StateHasChanged();
+    }
+
+    private void SelectAllPending()
+    {
+        selectedEntries = new HashSet<int>(pendingEntries.Select(e => e.Id));
+        StateHasChanged();
+    }
+
+    private void ClearSelection()
+    {
+        selectedEntries.Clear();
+        StateHasChanged();
+    }
+
+    private async Task SubmitSelected()
+    {
+        if (!selectedEntries.Any()) return;
+
+        submitting = true;
+        submitResult = null;
+
+        try
+        {
+            var entriesToSubmit = pendingEntries.Where(e => selectedEntries.Contains(e.Id)).ToList();
+            var grouped = GroupEntries(entriesToSubmit);
+            int successCount = 0;
+            int failCount = 0;
+
+            foreach (var group in grouped)
+            {
+                var totalSeconds = group.Entries.Sum(e => ParseDurationToSeconds(e.Duration ?? "00:00"));
+                var firstEntry = group.Entries.First();
+                
+                var worklog = new
+                {
+                    timeSpentSeconds = totalSeconds,
+                    started = $"{firstEntry.Date}T{firstEntry.StartTime}:00.000+0000",
+                    comment = firstEntry.Description ?? ""
+                };
+
+                try
+                {
+                    var request = new HttpRequestMessage(HttpMethod.Post, $"/api/jira/issue/{group.Ticket}/worklog");
+                    request.Headers.Add("X-Jira-Base-Url", AppState.Settings.JiraBaseUrl);
+                    request.Headers.Add("X-Jira-Pat", AppState.Settings.Pat);
+                    request.Content = JsonContent.Create(worklog);
+
+                    var response = await Http.SendAsync(request);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        foreach (var entry in group.Entries)
+                        {
+                            entry.SubmittedToJira = true;
+                            await IndexedDb.UpdateTimeEntryAsync(entry);
+                        }
+                        successCount++;
+                    }
+                    else
+                    {
+                        failCount++;
+                    }
+                }
+                catch
+                {
+                    failCount++;
+                }
+            }
+
+            await AppState.RefreshEntriesAsync();
+            submitResult = $"Submitted {successCount} worklogs. Failed: {failCount}";
+            selectedEntries.Clear();
+            LoadPendingEntries();
+        }
+        finally
+        {
+            submitting = false;
+        }
+    }
+
+    private List<(string Ticket, List<TimeEntry> Entries)> GroupEntries(List<TimeEntry> entries)
+    {
+        var result = new List<(string, List<TimeEntry>)>();
+        var sorted = entries.OrderBy(e => e.Date).ThenBy(e => e.StartTime).ToList();
+
+        List<TimeEntry>? currentGroup = null;
+        string? currentTicket = null;
+        string? currentDescription = null;
+        string? currentDate = null;
+
+        foreach (var entry in sorted)
+        {
+            if (currentGroup == null || entry.Ticket != currentTicket || entry.Description != currentDescription || entry.Date != currentDate)
+            {
+                if (currentGroup != null)
+                {
+                    result.Add((currentTicket!, currentGroup));
+                }
+                currentGroup = new List<TimeEntry> { entry };
+                currentTicket = entry.Ticket;
+                currentDescription = entry.Description;
+                currentDate = entry.Date;
+            }
+            else
+            {
+                currentGroup.Add(entry);
+            }
+        }
+
+        if (currentGroup != null)
+        {
+            result.Add((currentTicket!, currentGroup));
+        }
+
+        return result;
+    }
+
+    private int ParseDurationToSeconds(string duration)
+    {
+        if (TimeSpan.TryParse(duration, out var ts))
+        {
+            return (int)ts.TotalSeconds;
+        }
+        return 0;
+    }
+}

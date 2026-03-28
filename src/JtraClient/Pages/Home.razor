@@ -1,0 +1,136 @@
+﻿@page "/"
+@implements IDisposable
+
+<PageTitle>JTRA - Home</PageTitle>
+
+<div class="today-stats">
+    <div class="stat-card">
+        <h3>Target</h3>
+        <span class="stat-value">@AppState.TodayTarget.ToString(@"hh\:mm")</span>
+    </div>
+    <div class="stat-card">
+        <h3>Logged</h3>
+        <span class="stat-value">@AppState.TodayAccumulated.ToString(@"hh\:mm")</span>
+    </div>
+    <div class="stat-card @(AppState.TodayDeviation.TotalMinutes < 0 ? "negative" : "positive")">
+        <h3>Deviation</h3>
+        <span class="stat-value">@AppState.TodayDeviation.ToString(@"hh\:mm")</span>
+    </div>
+</div>
+
+<div class="entries-header">
+    <h3>Today's Entries</h3>
+    <button class="btn btn-primary" @onclick="ShowNewEntryDialog">Add Entry</button>
+</div>
+
+@if (AppState.TodayEntries.Any())
+{
+    <div class="entries-list">
+        @foreach (var entry in AppState.TodayEntries.OrderByDescending(e => e.StartTime))
+        {
+            <div class="entry-row" @onclick="() => EditEntry(entry)" @ondblclick="() => StartEdit(entry)">
+                <div class="entry-time">@entry.StartTime</div>
+                <div class="entry-type @entry.Type.ToString().ToLower()">@entry.Type</div>
+                <div class="entry-ticket">@entry.Ticket</div>
+                <div class="entry-description">@entry.Description</div>
+                <div class="entry-duration">@entry.Duration</div>
+                <div class="entry-actions">
+                    @if (entry.Type == TaskType.Ticket && !entry.SubmittedToJira && !string.IsNullOrEmpty(entry.Ticket))
+                    {
+                        <span class="badge bg-warning">Pending</span>
+                    }
+                    else if (entry.SubmittedToJira)
+                    {
+                        <span class="badge bg-success">Submitted</span>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <p class="no-entries">No entries for today. Start by checking in!</p>
+}
+
+@if (showEditDialog)
+{
+    <EditEntryDialog Entry="editingEntry" OnSave="SaveEntry" OnDelete="DeleteEntry" OnClose="CloseEditDialog" />
+}
+
+@code {
+    [Inject] private AppState AppState { get; set; } = default!;
+
+    private bool showEditDialog = false;
+    private TimeEntry? editingEntry;
+
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+    }
+
+    private void ShowNewEntryDialog()
+    {
+        editingEntry = new TimeEntry
+        {
+            Date = DateTime.Today.ToString("yyyy-MM-dd"),
+            StartTime = DateTime.Now.ToString("HH:mm"),
+            DayTargetHhmm = AppState.Settings.DefaultTargetHours
+        };
+        showEditDialog = true;
+    }
+
+    private void StartEdit(TimeEntry entry)
+    {
+        editingEntry = new TimeEntry
+        {
+            Id = entry.Id,
+            Date = entry.Date,
+            StartTime = entry.StartTime,
+            Type = entry.Type,
+            Ticket = entry.Ticket,
+            Description = entry.Description,
+            Duration = entry.Duration,
+            DayAccumulatedHhmm = entry.DayAccumulatedHhmm,
+            DayAccumulatedDays = entry.DayAccumulatedDays,
+            DayTargetHhmm = entry.DayTargetHhmm,
+            DayDeviationHhmm = entry.DayDeviationHhmm,
+            DayDeviationDays = entry.DayDeviationDays,
+            SubmittedToJira = entry.SubmittedToJira
+        };
+        showEditDialog = true;
+    }
+
+    private void EditEntry(TimeEntry entry)
+    {
+    }
+
+    private async Task SaveEntry(TimeEntry entry)
+    {
+        if (entry.Id == 0)
+        {
+            await AppState.AddNewEntryAsync(entry);
+        }
+        else
+        {
+            await AppState.UpdateEntryAsync(entry);
+        }
+        showEditDialog = false;
+    }
+
+    private async Task DeleteEntry(int id)
+    {
+        await AppState.DeleteEntryAsync(id);
+        showEditDialog = false;
+    }
+
+    private void CloseEditDialog()
+    {
+        showEditDialog = false;
+    }
+}

@@ -1,0 +1,159 @@
+@page "/settings"
+@implements IDisposable
+
+<PageTitle>JTRA - Settings</PageTitle>
+
+<h2>Settings</h2>
+
+<div class="settings-form">
+    <div class="form-group">
+        <label>JIRA Base URL</label>
+        <input type="url" @bind="settings.JiraBaseUrl" class="form-control" placeholder="https://your-company.atlassian.net" />
+    </div>
+
+    <div class="form-group">
+        <label>Personal Access Token (PAT)</label>
+        <input type="password" @bind="settings.Pat" class="form-control" placeholder="Your JIRA PAT" />
+        <small class="form-text text-muted">Stored locally in your browser only.</small>
+    </div>
+
+    <div class="form-group">
+        <label>Default Target Hours</label>
+        <input type="time" value="@defaultTargetHours" @onchange="@((ChangeEventArgs e) => defaultTargetHours = e.Value?.ToString() ?? "08:00")" class="form-control" />
+    </div>
+
+    <div class="form-group">
+        <label>Max Snooze Hours</label>
+        <input type="number" @bind="settings.MaxSnoozeHours" class="form-control" min="1" max="8" />
+    </div>
+
+    <div class="form-group">
+        <label>Auto-confirm Break Minutes</label>
+        <input type="number" @bind="settings.AutoConfirmBreakMinutes" class="form-control" min="1" max="30" />
+    </div>
+
+    <div class="form-group">
+        <label>Cache TTL (days)</label>
+        <input type="number" @bind="settings.CacheTtlDays" class="form-control" min="1" max="30" />
+    </div>
+
+    <h3>Configurable Task Types</h3>
+    
+    @foreach (var configType in settings.ConfigurableTypes)
+    {
+        <div class="config-type-row">
+            <div class="form-check">
+                <input type="checkbox" @bind="configType.Enabled" class="form-check-input" />
+                <label class="form-check-label">@configType.Type</label>
+            </div>
+            <input type="text" @bind="configType.DisplayName" class="form-control form-control-sm" placeholder="Display Name" />
+            <input type="text" @bind="configType.LinkedTicket" class="form-control form-control-sm" placeholder="Linked Ticket (optional)" />
+        </div>
+    }
+
+    <div class="actions">
+        <button class="btn btn-primary" @onclick="SaveSettings">Save Settings</button>
+        <button class="btn btn-secondary" @onclick="ResetToDefaults">Reset to Defaults</button>
+    </div>
+</div>
+
+<div class="data-section">
+    <h3>Data Management</h3>
+    <div class="actions">
+        <button class="btn btn-success" @onclick="ExportData">Export CSV</button>
+        <label class="btn btn-warning">
+            Import CSV
+            <input type="file" @onchange="ImportData" accept=".csv" style="display: none;" />
+        </label>
+        <button class="btn btn-danger" @onclick="ClearAllData">Clear All Data</button>
+    </div>
+</div>
+
+@code {
+    [Inject] private AppState AppState { get; set; } = default!;
+    [Inject] private IndexedDbService IndexedDb { get; set; } = default!;
+    [Inject] private CsvExportService CsvExport { get; set; } = default!;
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    private AppSettings settings = new();
+    private string defaultTargetHours = "08:00";
+
+    protected override void OnInitialized()
+    {
+        settings = new AppSettings
+        {
+            JiraBaseUrl = AppState.Settings.JiraBaseUrl,
+            Pat = AppState.Settings.Pat,
+            DefaultTargetHours = AppState.Settings.DefaultTargetHours,
+            MaxSnoozeHours = AppState.Settings.MaxSnoozeHours,
+            AutoConfirmBreakMinutes = AppState.Settings.AutoConfirmBreakMinutes,
+            CacheTtlDays = AppState.Settings.CacheTtlDays,
+            ConfigurableTypes = new List<ConfigurableType>(AppState.Settings.ConfigurableTypes)
+        };
+        
+        defaultTargetHours = settings.DefaultTargetHours;
+
+        if (!settings.ConfigurableTypes.Any())
+        {
+            InitializeDefaultConfigurableTypes();
+        }
+
+        AppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+    }
+
+    private void InitializeDefaultConfigurableTypes()
+    {
+        settings.ConfigurableTypes = new List<ConfigurableType>
+        {
+            new() { Type = TaskType.Messages, DisplayName = "Messages", Enabled = true },
+            new() { Type = TaskType.Support, DisplayName = "Support", Enabled = true },
+            new() { Type = TaskType.Meetings, DisplayName = "Meetings", Enabled = true },
+            new() { Type = TaskType.ChangeMgmt, DisplayName = "Change Management", Enabled = true },
+            new() { Type = TaskType.Reviews, DisplayName = "Reviews", Enabled = true },
+            new() { Type = TaskType.Training, DisplayName = "Training", Enabled = true },
+            new() { Type = TaskType.Other, DisplayName = "Other", Enabled = true }
+        };
+    }
+
+    private async Task SaveSettings()
+    {
+        settings.DefaultTargetHours = defaultTargetHours;
+        await AppState.SaveSettingsAsync(settings);
+    }
+
+    private void ResetToDefaults()
+    {
+        settings = new AppSettings();
+        defaultTargetHours = "08:00";
+        InitializeDefaultConfigurableTypes();
+    }
+
+    private async Task ExportData()
+    {
+        var csv = CsvExport.ExportToCsv(AppState.AllEntries);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
+        var base64 = Convert.ToBase64String(bytes);
+        
+        await JS.InvokeVoidAsync("downloadFile", $"jtra-export-{DateTime.Today:yyyy-MM-dd}.csv", "text/csv", base64);
+    }
+
+    private Task ImportData(ChangeEventArgs e)
+    {
+        return Task.CompletedTask;
+    }
+
+    private async Task ClearAllData()
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", "Are you sure you want to clear all data? This cannot be undone.");
+        if (confirmed)
+        {
+            await IndexedDb.ClearAllDataAsync();
+            await AppState.RefreshEntriesAsync();
+        }
+    }
+}
