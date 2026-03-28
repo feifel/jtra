@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-JTRA is a cross-platform desktop application that reminds the user every 15 minutes to confirm or change their current work task, records time against JIRA tickets, stores data locally in a CSV file, and — on request — submits recorded time to JIRA as worklogs via the JIRA REST API.
+JTRA is a cross-platform web application that reminds the user every 15 minutes to confirm or change their current work task, records time against JIRA tickets, stores data locally in the browser's IndexedDB, and — on request — submits recorded time to JIRA as worklogs via the JIRA REST API.
 
 ---
 
@@ -15,30 +15,30 @@ JTRA is a cross-platform desktop application that reminds the user every 15 minu
 | Application | **.NET 8 server** (Kestrel) deployed centrally | Single deployment for all users, IT-managed |
 | UI / Frontend | **Blazor WebAssembly** | Runs in browser, rich interactivity, shared C# code with server |
 | Language | **C# / .NET 8** | Unified language across frontend and backend |
-| Styling | **Tailwind CSS** | Utility-first, fast to prototype |
+| Styling | **Blazor default styling** | Simple, no additional CSS framework required |
 | Time data | **IndexedDB** (browser) | Data stored locally in each user's browser; no server-side storage |
 | Settings | **IndexedDB** (browser) | Per-user settings stored locally |
 | Secrets (JIRA PAT) | **IndexedDB** (browser) | Stored per-user, never sent to server except as Bearer token for API calls |
 | Background timer | **Server-side BackgroundService** | Reliable timer aligned to clock boundaries (`hh:00/15/30/45`) |
 | Real-time communication | **SignalR** | Server pushes timer events to all connected browsers |
-| Notifications | **Web Notifications API** | Browser-native notifications when timer fires |
+| Notifications | **Web Notifications API** | System-level notifications (Windows Action Center, macOS Notification Center, Linux notifications) when timer fires; works like Outlook web app |
 | JIRA API | **HttpClient on server** | No CORS restrictions; PAT sent as Bearer token |
 | Data portability | **CSV export/import** | Users can export IndexedDB data to CSV and import back |
 
 ### Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────┐
 │                     Central Server                               │
 │                                                                  │
-│   ┌─────────────────────────────────────────────────────────┐   │
+│   ┌──────────────────────────────────────────────────────────┐   │
 │   │  JtraServer (.NET 8)                                     │   │
 │   │                                                          │   │
-│   │   ┌─────────────┐    ┌─────────────┐    ┌────────────┐  │   │
-│   │   │ Static Files│    │  REST API   │    │   Timer    │  │   │
-│   │   │ (Blazor UI) │    │  (JIRA proxy│    │  Service   │  │   │
-│   │   │             │    │   only)     │    │            │  │   │
-│   │   └─────────────┘    └─────────────┘    └────────────┘  │   │
+│   │   ┌─────────────┐    ┌─────────────┐    ┌────────────┐   │   │
+│   │   │ Static Files│    │  REST API   │    │   Timer    │   │   │
+│   │   │ (Blazor UI) │    │  (JIRA proxy│    │  Service   │   │   │
+│   │   │             │    │   only)     │    │            │   │   │
+│   │   └─────────────┘    └─────────────┘    └────────────┘   │   │
 │   │                          │                    │          │   │
 │   │                    SignalR Hub                │          │   │
 │   │                          │                    │          │   │
@@ -50,16 +50,16 @@ JTRA is a cross-platform desktop application that reminds the user every 15 minu
                  ┌─────────────┼─────────────┐
                  │             │             │
                  ▼             ▼             ▼
-          ┌──────────┐  ┌──────────┐  ┌──────────┐
-          │ Browser  │  │ Browser  │  │ Browser  │
-          │ (User A) │  │ (User B) │  │ (User C) │
-          │          │  │          │  │          │
-          │ IndexedDB│  │ IndexedDB│  │ IndexedDB│
-          │ - Time   │  │ - Time   │  │ - Time   │
-          │   entries│  │   entries│  │   entries│
+          ┌───────────┐  ┌───────────┐  ┌───────────┐
+          │ Browser   │  │ Browser   │  │ Browser   │
+          │ (User A)  │  │ (User B)  │  │ (User C)  │
+          │           │  │           │  │           │
+          │ IndexedDB │  │ IndexedDB │  │ IndexedDB │
+          │ - Time    │  │ - Time    │  │ - Time    │
+          │   entries │  │   entries │  │   entries │
           │ - Settings│  │ - Settings│  │ - Settings│
-          │ - PAT    │  │ - PAT    │  │ - PAT    │
-          └──────────┘  └──────────┘  └──────────┘
+          │ - PAT     │  │ - PAT     │  │ - PAT     │
+          └───────────┘  └───────────┘  └───────────┘
                                │
                                ▼
                           JIRA Server
@@ -73,11 +73,11 @@ JTRA is a cross-platform desktop application that reminds the user every 15 minu
 | No user installation | ✅ Just open URL in browser | ✅ Run single .exe |
 | Timer reliability | ✅ Server-side with SignalR | ✅ Server-side |
 | JIRA CORS bypass | ✅ Server proxy | ✅ Server proxy |
-| Data stored on user's machine | ✅ IndexedDB in browser | ✅ CSV on filesystem |
+| Data stored on user's machine | ✅ IndexedDB in browser | ✅ IndexedDB in browser |
 | Works offline | ✅ PWA with cached UI | ✅ Full offline |
 | Multiple users | ✅ Single server serves all | ❌ One instance per user |
 | Browser tab required | ✅ Yes | ❌ Server runs independently |
-| Data portability | ✅ CSV export/import | ✅ CSV directly editable |
+| Data portability | ✅ CSV export/import | ✅ CSV export/import |
 
 ### Server Deployment
 
@@ -114,7 +114,7 @@ docker build -t jtra-server .
   - Select type **`Break`** to start a break.
 - Keyboard shortcuts: **Enter** = confirm current, **Escape** = confirm current.
 - **Snooze / reschedule next popup**: The user can manually change when the next popup will appear, useful for meetings or focused work sessions.
-- **App close behavior**: When the browser tab is closed, the current task and time are saved to IndexedDB. On the next session, gap detection prompts the user to account for the time away. If the gap is not filled with a specific task, a `Break` entry is created automatically.
+- **App close behavior**: When the browser tab is closed, the current task and time are saved to IndexedDB. On the next session, a non-intrusive UI indicator shows the user that there may be missing entries to add.
 
 #### Next Popup Time Display and Control
 
@@ -135,17 +135,16 @@ If the active task is **`break`** and the check-in popup is not interacted with 
 
 #### Timer Resilience
 
-Since data is stored in the browser's IndexedDB, the server tracks each client's last-seen time via SignalR connection state. When a browser disconnects (tab closed, network loss):
+The client stores its current task in IndexedDB (`connection_state` store) before the browser unloads (using `beforeunload` event). On startup, the app:
 
-1. **On disconnect**: Server notes the disconnect time for that connection
-2. **On reconnect**: Client compares current time with last stored task's start time
-3. **Gap detection**: If there's a gap (user was away), the client prompts: "You were away from XX:XX to XX:XX. What were you doing?"
-   - User can fill the gap with a task or mark it as `Break`
-   - Multiple gaps in a day are handled sequentially
+1. Reads the last entry from IndexedDB to determine what was being tracked
+2. Compares the last entry's start time with the current time
+3. If there's a time gap (user was away), displays a **non-intrusive indicator** in the UI: "Last tracked: XX:XX. Add missing entries?"
+4. User can click to add entries for the gap period, or ignore it
 
-The client stores its current task in IndexedDB (`connection_state` store) before the browser unloads (using `beforeunload` event), enabling gap detection on the next session.
+The server does not track client disconnect/reconnect. The user is responsible for filling any gaps in their time tracking. This keeps the architecture simple and puts the user in control.
 
-On startup, the app reads the last IndexedDB entry to determine what was being tracked, then waits for the next SignalR timer event from the server.
+On startup, the app waits for the next SignalR timer event from the server.
 
 ### 3.2 Task Entry
 
@@ -157,12 +156,12 @@ A task entry consists of:
 | **JIRA Ticket** | Required only when type is `Ticket`. Auto-filled (and read-only) when the selected configurable type has a linked ticket configured. Hidden/disabled for types with no ticket association. Must match `[A-Z]+-[0-9]+` (e.g. `PROJ-123`). |
 | **Description** | Free text, max 100 characters. Pre-filled with the previous description for the same ticket/type combination. |
 
-#### CSV Row Lifecycle
+#### IndexedDB Entry Lifecycle
 
-When a task is started, a CSV row is written immediately with the following columns populated:
+When a task is started, an entry is written immediately to IndexedDB with the following fields populated:
 - `date`, `start_time`, `type`, `ticket`, `description`, `day_target_hhmm`
 
-The remaining calculated columns (`duration`, `day_accumulated_hhmm`, `day_accumulated_days`, `day_deviation_hhmm`, `day_deviation_days`) are computed and written when the user starts the next task (i.e., when the current slot ends).
+The remaining calculated fields (`duration`, `day_accumulated_hhmm`, `day_accumulated_days`, `day_deviation_hhmm`, `day_deviation_days`) are computed and written when the user starts the next task (i.e., when the current slot ends).
 
 #### Editing Historical Entries
 
@@ -179,7 +178,7 @@ The type is always selected first. It determines what fields are shown below it.
 | Value | Description | JIRA ticket required | Submitted to JIRA |
 |---|---|---|---|
 | `Ticket` | Work on a specific JIRA ticket — the primary use case | Yes | Yes |
-| `Break` | A break period (also created automatically when app is closed) | No | No |
+| `Break` | A break period | No | No |
 
 **Configurable types (enabled/disabled individually in Settings, labels editable):**
 
@@ -204,7 +203,7 @@ Each configurable type can optionally have a **linked JIRA ticket** configured i
 
 - Selecting that type in the check-in popup **automatically populates** the ticket field with the configured ticket number.
 - The ticket field is shown but **read-only** (the user cannot change it).
-- The entry is written to the CSV with that ticket number in the `ticket` column.
+- The entry is written to IndexedDB with that ticket number in the `ticket` column.
 - The entry **is included in JIRA worklog submission**, using the linked ticket as the target issue.
 
 This is useful for recurring overhead activities that map to a fixed JIRA ticket. For example:
@@ -219,7 +218,7 @@ If no linked ticket is configured for a type, the ticket field is hidden and the
 - Lists all previously used JIRA tickets, **most recently used first**.
 - Each entry displays: `TICKET-123 – <summary fetched from JIRA>`.
 - Supports **live search/filter** as the user types.
-- Ticket summaries are fetched from JIRA once per ticket and **cached locally** in `ticket-cache.json` (invalidated after 7 days, configurable).
+- Ticket summaries are fetched from JIRA once per ticket and **cached locally** in IndexedDB (`ticket_cache` store), invalidated after 7 days (configurable).
 
 ### 3.3 Day Start Dialog
 
@@ -247,7 +246,7 @@ Start times are also **rounded to the nearest 15-minute boundary**. For example:
 - 09:22 → 09:15
 - 09:23 → 09:30
 
-Both rounded start time and rounded duration are stored in the CSV.
+Both rounded start time and rounded duration are stored in IndexedDB.
 
 ### 3.5 IndexedDB Data Storage
 
@@ -292,8 +291,7 @@ Both rounded start time and rounded duration are stored in the CSV.
 **connection_state**
 | Field | Type | Description |
 |---|---|---|
-| `last_disconnect_time` | ISO timestamp | When the browser tab was last closed/disconnected |
-| `last_task` | object | The active task at time of disconnect (type, ticket, description) |
+| `last_task` | object | The active task at time of browser close (type, ticket, description, start_time) |
 
 > **Notes:**
 > - `end_time` is not stored; it is calculated from the next entry's `start_time`. This enforces a continuous, gapless timeline — the user must report all time (using `Break` for breaks).
@@ -317,7 +315,7 @@ date,start_time,type,ticket,description,duration,day_accumulated_hhmm,day_accumu
 
 The main window shows a scrollable log of **all historical entries** across all days, with today's stats prominently displayed at the top. It stays open (possibly minimised) to keep the timer running.
 
-- The entry table is **fully scrollable** and shows every entry from the CSV file, newest first.
+- The entry table is **fully scrollable** and shows every entry from IndexedDB, newest first.
 - A **date group header** separates each day, showing that day's target hours, accumulated time, and deviation.
 - Today's date group is always visible at the top and auto-scrolled into view on startup.
 - A **date filter / search bar** allows the user to jump to a specific date or filter by ticket/description.
@@ -398,7 +396,7 @@ The check-in popup is displayed as a modal dialog in the browser when the server
   ```
   The `started` timestamp includes the local timezone offset (derived automatically from the OS — no user configuration needed).
 - Results (success / error per entry) are shown in a results dialog after submission.
-- Successfully submitted entries are marked `submitted_to_jira = true` in the CSV.
+- Successfully submitted entries are marked `submitted_to_jira = true` in IndexedDB.
 - `break` entries are always skipped.
 - Already-submitted entries are shown in the preview but greyed out and excluded from re-submission by default (user can force re-submit with a checkbox).
 - Only entries related to a JIRA ticket are eligible for JIRA worklog submission. Types with no ticket association (`Break`, and configurable types without a linked ticket) are always skipped.
@@ -436,7 +434,7 @@ Content-Type: application/json
 - The `timeSpentSeconds` is the total duration of the grouped entries in seconds.
 - The `comment` is the shared description text.
 
-After submission, a results dialog shows success/error status per worklog entry. Successfully submitted entries are marked `submitted_to_jira = true` in the CSV.
+After submission, a results dialog shows success/error status per worklog entry. Successfully submitted entries are marked `submitted_to_jira = true` in IndexedDB.
 
 ### 3.9 Settings Screen
 
@@ -474,7 +472,7 @@ Built-in types (`Ticket`, `Break`) are shown as read-only and cannot be disabled
 | **Cross-platform** | Any modern browser (Chrome, Firefox, Edge, Safari) on Windows, macOS, Linux |
 | **No installation required** | Users open URL in browser; PWA can be installed optionally for desktop integration |
 | **Central deployment** | Single server instance serves all users; IT-managed deployment |
-| **Browser notifications** | Web Notifications API for check-in alerts; user must grant permission on first use |
+| **Browser notifications** | **Web Notifications API** — delivers system-level notifications (Windows Action Center, macOS Notification Center, Linux notifications); user must grant permission on first use. Works like Outlook web app. |
 | **JIRA API / CORS** | HTTP calls made by server-side HttpClient — no browser CORS restrictions apply |
 | **Offline operation** | PWA with cached UI; works fully offline for time tracking; JIRA connectivity only needed for ticket summary lookup and worklog submission |
 | **Data locality** | All user data stored in browser's IndexedDB; never persisted on server |
@@ -483,7 +481,7 @@ Built-in types (`Ticket`, `Break`) are shown as read-only and cannot be disabled
 | **Timer behaviour** | Timer runs on server (BackgroundService); reliable 15-minute intervals aligned to clock boundaries; pushed via SignalR |
 | **Real-time updates** | SignalR connection keeps browser UI in sync with server timer state |
 | **Tab visibility** | Browser tab should stay open for reliable notifications; background tabs may have delayed notifications depending on browser |
-| **Gap handling** | Automatic gap detection on tab reopen; user prompted to account for missed time |
+| **Missing entries** | Non-intrusive UI indicator when time gaps detected; user chooses whether to add entries |
 
 ---
 
@@ -533,6 +531,7 @@ Content-Type: application/json
       ├── New calendar day? ──► Show Day Start dialog (set target hours)
       │
       └── Resume from last IndexedDB entry, wait for SignalR timer event
+          Show indicator if there's a time gap since last entry
 
 [15-min timer fires (server-side)]
       │
@@ -541,7 +540,7 @@ Content-Type: application/json
       ▼
 [Browser receives SignalR event]
       │
-      ├── Show browser notification (Web Notifications API)
+      ├── Show system notification (Web Notifications API → Windows/macOS/Linux notifications)
       │
       └── Display check-in modal in UI
             │
@@ -565,17 +564,15 @@ Content-Type: application/json
 
 [User closes browser tab]
       │
-      └──► Save current task + disconnect time to IndexedDB (beforeunload event)
-            SignalR disconnect detected by server
+      └──► Save current task to IndexedDB (beforeunload event)
 
-[User reopens browser / reconnects]
+[User reopens browser]
       │
       ├── SignalR reconnects
       ├── Load last task from IndexedDB
-      ├── Compare last disconnect time with current time
       │
-      └──► Gap detected? ──► Show gap dialog: "You were away from XX:XX to XX:XX. What were you doing?"
-                               User fills gap or accepts default Break entry
+      └──► Time gap detected? ──► Show indicator: "Last tracked: XX:XX. Add missing entries?"
+                                User clicks to add entries, or dismisses
 
 [User clicks Export]
       │
@@ -587,7 +584,7 @@ Content-Type: application/json
 
 [User double-clicks a historical entry in main window]
       │
-      └──► Open edit dialog for that row's editable columns
+      └──► Open edit dialog for that row's editable fields
            On save → Recalculate all dependent fields for this and all subsequent entries
 ```
 
@@ -623,16 +620,14 @@ jtra/
 │   │   │   ├── CheckInPopup.razor       # Check-in modal (triggered by SignalR)
 │   │   │   ├── DayStartDialog.razor     # New-day target hours dialog
 │   │   │   ├── EditEntryDialog.razor    # Edit historical entry dialog
-│   │   │   ├── GapDialog.razor          # Gap detection/fill dialog
 │   │   │   ├── SubmitView.razor         # JIRA worklog submission preview
 │   │   │   ├── ExportImport.razor       # CSV export/import UI
 │   │   │   └── SettingsView.razor       # Settings screen
 │   │   ├── Services/
 │   │   │   ├── TimerHubClient.cs        # SignalR client connection
-│   │   │   ├── NotificationService.cs   # Web Notifications API wrapper
+│   │   │   ├── NotificationService.cs   # Web Notifications API wrapper (system-level notifications)
 │   │   │   ├── IndexedDbService.cs      # IndexedDB operations (time entries, settings, cache)
 │   │   │   ├── CsvExportService.cs      # CSV export/import logic
-│   │   │   ├── GapDetectionService.cs   # Detect and handle time gaps
 │   │   │   └── AppState.cs              # Global state management
 │   │   ├── Shared/
 │   │   │   └── MainLayout.razor         # Layout component
@@ -662,18 +657,14 @@ jtra/
 
 **Browser notifications (NotificationService.cs):**
 - Requests permission on first use
-- Shows notification with "Open JTRA" action
+- Shows system-level notification via Web Notifications API
+- Notifications appear in Windows Action Center, macOS Notification Center, or Linux notifications (like Outlook web app)
 - Focuses browser tab when notification is clicked
 
 **IndexedDB storage (IndexedDbService.cs):**
 - Stores all time entries, settings, and ticket cache locally
 - Uses Blazor JS interop or a library like `Dexie.NET`
 - Handles beforeunload event to save current task state
-
-**Gap detection (GapDetectionService.cs):**
-- Compares last disconnect time with current time on startup
-- Prompts user to fill gaps with appropriate task or Break
-- Creates Break entries for unfilled gaps
 
 ---
 
@@ -687,18 +678,20 @@ jtra/
 | 4 | Should a system tray icon be shown? | **No** — the app runs as a web application in the browser; no native desktop integration needed. |
 | 5 | Should the JIRA PAT be stored encrypted? | The PAT is stored in IndexedDB (browser sandbox). This provides isolation per browser profile. For additional security, encryption could be added in a future version if required. |
 | 6 | How should entries for in-progress tasks be handled? | **Write immediately on start** with `date`, `start_time`, `type`, `ticket`, `description`, `day_target_hhmm`. Calculated fields (`duration`, `day_*`) are written when the next task starts. |
-| 7 | What happens if browser is closed for several days? | Gap detection prompts user on reconnect to fill missing time. Users can edit any historical entry (double-click row), and dependent calculated fields are recalculated automatically. |
+| 7 | What happens if browser is closed for several days? | A non-intrusive indicator shows the user there may be missing entries. Users can edit any historical entry (double-click row), and dependent calculated fields are recalculated automatically. |
 | 8 | Should "working days" setting affect app behavior? | **Removed** — this configuration option is not needed. |
 | 9 | Where does the "previously used tickets" list come from? | **Derived from IndexedDB entries** on startup, ordered by most recently used first. |
-| 10 | When should `Break` entry be created? | When gap detection runs and the user doesn't specify a task for the gap period, a `Break` entry is created automatically. The `End` type has been removed. |
+| 10 | When should `Break` entry be created? | Only when the user explicitly selects `Break` as a task type. No automatic Break entries are created. Users can manually add entries for any time gaps. |
 | 11 | How to edit historical entries? | **Double-click row** in main window table opens an edit dialog. Only `date`, `start_time`, `type`, `ticket`, `description`, `day_target_hhmm` are editable. Dependent fields are recalculated on save. Delete and insert functionality planned for Phase 2. |
 | 12 | What happens when user confirms same task in check-in popup? | **Nothing** — the current task continues, no IndexedDB update needed. The in-progress entry remains until the task changes. |
 | 13 | Should start_time be actual or rounded? | **Rounded to nearest 15-min boundary** (e.g., 09:07 → 09:00, 09:08 → 09:15). |
 | 14 | Should check-in interval be configurable? | **No** — fixed at 15 minutes. Removed from settings. |
 | 15 | Central server or self-hosted? | **Central server** with IndexedDB storage in browser. Single deployment for IT, data stored locally per user. |
 | 16 | CSV or IndexedDB for data storage? | **IndexedDB** with CSV export/import for portability. Data never stored on server. |
-| 17 | What happens when browser tab is closed? | **Save state and detect gap on reconnect** — current task and disconnect time saved to IndexedDB via beforeunload. On next session, gap detection prompts user to account for missed time. |
+| 17 | What happens when browser tab is closed? | **Save current task to IndexedDB** — via beforeunload event. On next session, a non-intrusive indicator shows the user there may be missing entries. User decides whether to add them. |
 | 18 | Should users see same data across devices/browsers? | **No** — each browser profile has independent data. This keeps architecture simple and data truly local. |
+| 19 | Styling approach? | **Blazor default styling** — no additional CSS framework required. |
+| 20 | Should notifications appear at system level? | **Yes** — Web Notifications API delivers to Windows Action Center, macOS Notification Center, Linux notifications, like Outlook web app. |
 
 ---
 
@@ -734,9 +727,8 @@ jtra/
 - Worklog submission preview + submit
 - Delete and insert entries (with recalculation)
 
-### Phase 3 — Polish & Gap Detection
-- Gap detection on browser reconnect
-- Gap dialog for filling missed time
+### Phase 3 — Polish
+- Time gap indicator in main UI
 - Auto-confirm for break timeout with countdown
 - Per-day target hours override
 - PWA configuration (offline capability, installable)
