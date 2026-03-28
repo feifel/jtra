@@ -5,13 +5,17 @@ namespace JtraClient.Services;
 
 public class CsvExportService
 {
-    public string ExportToCsv(List<TimeEntry> entries)
+    public string ExportToCsv(List<TimeEntry> entries, bool oldestFirst = true)
     {
         var sb = new StringBuilder();
         
         sb.AppendLine("date,start_time,type,ticket,description,duration,day_accumulated_hhmm,day_accumulated_days,day_target_hhmm,day_deviation_hhmm,day_deviation_days,submitted_to_jira");
 
-        foreach (var entry in entries.OrderByDescending(e => e.Date).ThenByDescending(e => e.StartTime))
+        IEnumerable<TimeEntry> orderedEntries = oldestFirst
+            ? entries.OrderBy(e => e.Date).ThenBy(e => e.StartTime)
+            : entries.OrderByDescending(e => e.Date).ThenByDescending(e => e.StartTime);
+
+        foreach (var entry in orderedEntries)
         {
             sb.AppendLine($"{entry.Date},{entry.StartTime},{entry.Type},{EscapeCsv(entry.Ticket)},{EscapeCsv(entry.Description)},{entry.Duration},{entry.DayAccumulatedHhmm},{entry.DayAccumulatedDays},{entry.DayTargetHhmm},{entry.DayDeviationHhmm},{entry.DayDeviationDays},{entry.SubmittedToJira}");
         }

@@ -9,6 +9,7 @@ public class AppSettings
     public int MaxSnoozeHours { get; set; } = 4;
     public int AutoConfirmBreakMinutes { get; set; } = 10;
     public int CacheTtlDays { get; set; } = 7;
+    public bool CsvExportOldestFirst { get; set; } = true;
     public List<ConfigurableType> ConfigurableTypes { get; set; } = new();
 }
 

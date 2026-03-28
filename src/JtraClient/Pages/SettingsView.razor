@@ -42,6 +42,11 @@
         <label class="form-check-label" for="use24h">Use 24-hour time format</label>
     </div>
 
+    <div class="form-group form-check">
+        <input type="checkbox" @bind="settings.CsvExportOldestFirst" class="form-check-input" id="csvOldestFirst" />
+        <label class="form-check-label" for="csvOldestFirst">CSV export: oldest entries first</label>
+    </div>
+
     <h3>Configurable Task Types</h3>
     
     @for (int i = 0; i < settings.ConfigurableTypes.Count; i++)
@@ -96,6 +101,7 @@
             AutoConfirmBreakMinutes = AppState.Settings.AutoConfirmBreakMinutes,
             CacheTtlDays = AppState.Settings.CacheTtlDays,
             Use24HourFormat = AppState.Settings.Use24HourFormat,
+            CsvExportOldestFirst = AppState.Settings.CsvExportOldestFirst,
             ConfigurableTypes = AppState.Settings.ConfigurableTypes.Select(c => new ConfigurableType
             {
                 Type = c.Type,
@@ -173,7 +179,7 @@
 
     private async Task ExportData()
     {
-        var csv = CsvExport.ExportToCsv(AppState.AllEntries);
+        var csv = CsvExport.ExportToCsv(AppState.AllEntries, settings.CsvExportOldestFirst);
         var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
         var base64 = Convert.ToBase64String(bytes);
         
