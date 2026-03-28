@@ -5,6 +5,7 @@ public class AppSettings
     public string? JiraBaseUrl { get; set; }
     public string? Pat { get; set; }
     public string DefaultTargetHours { get; set; } = "08:00";
+    public bool Use24HourFormat { get; set; } = true;
     public int MaxSnoozeHours { get; set; } = 4;
     public int AutoConfirmBreakMinutes { get; set; } = 10;
     public int CacheTtlDays { get; set; } = 7;

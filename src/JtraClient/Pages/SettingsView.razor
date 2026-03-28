@@ -37,6 +37,11 @@
         <input type="number" @bind="settings.CacheTtlDays" class="form-control" min="1" max="30" />
     </div>
 
+    <div class="form-group form-check">
+        <input type="checkbox" @bind="settings.Use24HourFormat" class="form-check-input" id="use24h" />
+        <label class="form-check-label" for="use24h">Use 24-hour time format</label>
+    </div>
+
     <h3>Configurable Task Types</h3>
     
     @foreach (var configType in settings.ConfigurableTypes)
@@ -88,6 +93,7 @@
             MaxSnoozeHours = AppState.Settings.MaxSnoozeHours,
             AutoConfirmBreakMinutes = AppState.Settings.AutoConfirmBreakMinutes,
             CacheTtlDays = AppState.Settings.CacheTtlDays,
+            Use24HourFormat = AppState.Settings.Use24HourFormat,
             ConfigurableTypes = new List<ConfigurableType>(AppState.Settings.ConfigurableTypes)
         };
         

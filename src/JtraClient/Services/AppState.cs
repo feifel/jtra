@@ -154,6 +154,12 @@ public class AppState
         NotifyStateChanged();
     }
 
+    public void ShowAddEntryPopup()
+    {
+        ShowCheckInPopup = true;
+        NotifyStateChanged();
+    }
+
     public event Action<bool>? OnServerConnectionChanged;
 
     public void SetServerConnected(bool connected)

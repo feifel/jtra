@@ -64,16 +64,26 @@
     protected override void OnParametersSet()
     {
         entryDate = Entry.Date;
-        entryStartTime = Entry.StartTime;
-        entryTargetHours = Entry.DayTargetHhmm;
+        entryStartTime = NormalizeTime(Entry.StartTime);
+        entryTargetHours = NormalizeTime(Entry.DayTargetHhmm);
     }
 
     private async Task Save()
     {
         Entry.Date = entryDate;
-        Entry.StartTime = entryStartTime;
-        Entry.DayTargetHhmm = entryTargetHours;
+        Entry.StartTime = NormalizeTime(entryStartTime);
+        Entry.DayTargetHhmm = NormalizeTime(entryTargetHours);
         await OnSave.InvokeAsync(Entry);
+    }
+
+    private static string NormalizeTime(string time)
+    {
+        if (string.IsNullOrEmpty(time)) return time;
+        // input type="time" may return HH:mm:ss — strip seconds
+        var parts = time.Split(':');
+        if (parts.Length >= 2)
+            return $"{parts[0]}:{parts[1]}";
+        return time;
     }
 
     private async Task Delete()
