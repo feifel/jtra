@@ -1,7 +1,7 @@
 @inherits LayoutComponentBase
 @implements IDisposable
 
-<div class="page">
+<div class="page" @onclick="OnFirstInteraction">
     <div class="sidebar">
         <NavMenu />
     </div>
@@ -28,6 +28,7 @@
 
     private bool ShowCheckInPopup => AppState.ShowCheckInPopup;
     private bool _lastPopupState = false;
+    private bool _notificationPermissionRequested = false;
 
     protected override void OnInitialized()
     {
@@ -37,6 +38,15 @@
     public void Dispose()
     {
         AppState.OnChange -= OnAppStateChanged;
+    }
+
+    private async Task OnFirstInteraction()
+    {
+        if (!_notificationPermissionRequested)
+        {
+            _notificationPermissionRequested = true;
+            await NotificationService.RequestPermissionAsync();
+        }
     }
 
     private void OnAppStateChanged()

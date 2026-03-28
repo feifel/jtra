@@ -18,4 +18,5 @@ public class ConfigurableType
     public string DisplayName { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
     public string? LinkedTicket { get; set; }
+    public string? Description { get; set; }
 }

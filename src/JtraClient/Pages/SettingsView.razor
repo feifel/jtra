@@ -44,17 +44,18 @@
 
     <h3>Configurable Task Types</h3>
     
-    @foreach (var configType in settings.ConfigurableTypes)
+    @for (int i = 0; i < settings.ConfigurableTypes.Count; i++)
     {
+        var index = i;
         <div class="config-type-row">
-            <div class="form-check">
-                <input type="checkbox" @bind="configType.Enabled" class="form-check-input" />
-                <label class="form-check-label">@configType.Type</label>
-            </div>
-            <input type="text" @bind="configType.DisplayName" class="form-control form-control-sm" placeholder="Display Name" />
-            <input type="text" @bind="configType.LinkedTicket" class="form-control form-control-sm" placeholder="Linked Ticket (optional)" />
+            <input type="text" @bind="settings.ConfigurableTypes[index].DisplayName" class="form-control form-control-sm" placeholder="Type Name (required)" />
+            <input type="text" @bind="settings.ConfigurableTypes[index].LinkedTicket" class="form-control form-control-sm" placeholder="Ticket" />
+            <input type="text" @bind="settings.ConfigurableTypes[index].Description" class="form-control form-control-sm" placeholder="Default Text" />
+            <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveConfigType(index)">X</button>
         </div>
     }
+    
+    <button class="btn btn-sm btn-outline-primary" @onclick="AddConfigType">+ Add Type</button>
 
     <div class="actions">
         <button class="btn btn-primary" @onclick="SaveSettings">Save Settings</button>
@@ -94,7 +95,14 @@
             AutoConfirmBreakMinutes = AppState.Settings.AutoConfirmBreakMinutes,
             CacheTtlDays = AppState.Settings.CacheTtlDays,
             Use24HourFormat = AppState.Settings.Use24HourFormat,
-            ConfigurableTypes = new List<ConfigurableType>(AppState.Settings.ConfigurableTypes)
+            ConfigurableTypes = AppState.Settings.ConfigurableTypes.Select(c => new ConfigurableType
+            {
+                Type = c.Type,
+                DisplayName = c.DisplayName,
+                LinkedTicket = c.LinkedTicket,
+                Description = c.Description,
+                Enabled = c.Enabled
+            }).ToList()
         };
         
         defaultTargetHours = settings.DefaultTargetHours;
@@ -126,9 +134,32 @@
         };
     }
 
+    private void AddConfigType()
+    {
+        settings.ConfigurableTypes.Add(new ConfigurableType { Type = TaskType.Other, DisplayName = "", Enabled = true });
+    }
+
+    private void RemoveConfigType(int index)
+    {
+        if (index >= 0 && index < settings.ConfigurableTypes.Count)
+        {
+            settings.ConfigurableTypes.RemoveAt(index);
+        }
+    }
+
     private async Task SaveSettings()
     {
         settings.DefaultTargetHours = defaultTargetHours;
+        settings.ConfigurableTypes = settings.ConfigurableTypes
+            .Where(c => !string.IsNullOrWhiteSpace(c.DisplayName))
+            .Select((c, i) => new ConfigurableType
+            {
+                Type = (TaskType)Enum.GetValues(typeof(TaskType)).GetValue(Math.Min(i + 2, Enum.GetValues(typeof(TaskType)).Length - 1))!,
+                DisplayName = c.DisplayName,
+                LinkedTicket = c.LinkedTicket,
+                Description = c.Description,
+                Enabled = true
+            }).ToList();
         await AppState.SaveSettingsAsync(settings);
     }
 
@@ -148,9 +179,19 @@
         await JS.InvokeVoidAsync("downloadFile", $"jtra-export-{DateTime.Today:yyyy-MM-dd}.csv", "text/csv", base64);
     }
 
-    private Task ImportData(ChangeEventArgs e)
+    private async Task ImportData(ChangeEventArgs e)
     {
-        return Task.CompletedTask;
+        var files = await JS.InvokeAsync<string[]>("getSelectedFiles");
+        if (files == null || files.Length == 0) return;
+        
+        var fileContent = await JS.InvokeAsync<string>("readFileContent");
+        if (string.IsNullOrEmpty(fileContent)) return;
+        
+        var entries = CsvExport.ImportFromCsv(fileContent);
+        foreach (var entry in entries)
+        {
+            await AppState.AddNewEntryAsync(entry);
+        }
     }
 
     private async Task ClearAllData()

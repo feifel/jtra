@@ -34,7 +34,4 @@ appState.OnServerConnectionChanged += connected =>
 await appState.InitializeAsync();
 await timerHub.StartAsync(serverUrl);
 
-var notificationService = host.Services.GetRequiredService<NotificationService>();
-await notificationService.RequestPermissionAsync();
-
 await host.RunAsync();

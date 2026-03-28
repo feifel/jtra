@@ -239,6 +239,11 @@ public class AppState
 
     public async Task DeleteEntryAsync(int id)
     {
+        if (CurrentTask?.Id == id)
+        {
+            CurrentTask = null;
+        }
+        
         await _indexedDb.DeleteTimeEntryAsync(id);
         AllEntries.RemoveAll(e => e.Id == id);
         TodayEntries.RemoveAll(e => e.Id == id);
@@ -315,7 +320,11 @@ public class AppState
                 var startTime = ParseTime(entry.StartTime);
                 DateTime endTime;
                 
-                if (i < entries.Count - 1)
+                if (entry == CurrentTask)
+                {
+                    endTime = startTime;
+                }
+                else if (i < entries.Count - 1)
                 {
                     endTime = ParseTime(entries[i + 1].StartTime);
                     if (endTime <= startTime)
@@ -325,14 +334,7 @@ public class AppState
                 }
                 else
                 {
-                    if (entry.Date == today && entry != CurrentTask)
-                    {
-                        endTime = now;
-                    }
-                    else
-                    {
-                        endTime = startTime;
-                    }
+                    endTime = startTime;
                 }
                 
                 var duration = endTime - startTime;
