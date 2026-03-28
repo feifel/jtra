@@ -110,10 +110,13 @@ docker build -t jtra-server .
   - A time picker or preset buttons (e.g., +30min, +1h, +2h, "at 14:00") allow rescheduling the next check-in.
   - Useful when the user knows they will be in a long meeting or focused work session and don't want interruptions every 15 minutes.
   - Example: If the user is in a 2-hour meeting from 10:00 to 12:00, they can set the next popup to 12:00 instead of being asked at 10:15, 10:30, etc.
+- **Snooze is handled entirely client-side:**
+  - Both server and client fallback timers fire at fixed `hh:00/15/30/45` boundaries regardless of snooze setting
+  - The client ignores timer events when a snooze time is active
+  - Example: If snooze is set to 14:00, events at 13:30 and 13:45 are ignored; popup shows at 14:00
 - When a custom next popup time is set:
-  - The timer is rescheduled to fire at the specified time instead of the next 15-minute boundary.
   - The custom time is stored in memory only (not persisted). If the browser is closed, the next session starts with normal 15-minute boundary scheduling.
-  - After the custom popup fires, the timer resumes normal 15-minute boundary scheduling.
+  - After the custom popup fires, the timer resumes normal behavior (next event at `hh:00/15/30/45`).
   - The custom popup time must be in the future (at least 1 minute ahead).
   - The maximum snooze duration is configurable in Settings (default: 4 hours).
 
@@ -133,6 +136,31 @@ The client stores its current task in IndexedDB (`connection_state` store) befor
 The server does not track client disconnect/reconnect. The user is responsible for filling any gaps in their time tracking. This keeps the architecture simple and puts the user in control.
 
 On startup, the app waits for the next SignalR timer event from the server.
+
+#### Connection Resilience (Client-Side Fallback Timer)
+
+The client monitors the SignalR connection state and handles disconnections gracefully:
+
+| Connection State | Timer Behavior |
+|---|---|
+| **Connected** | Server sends `CheckInTime` events via SignalR at `hh:00/15/30/45` boundaries |
+| **Disconnected** | Client-side fallback timer activates, firing at the same `hh:00/15/30/45` boundaries |
+| **Reconnected** | Fallback timer is discarded; client resumes listening to server events |
+
+**Snooze handling:**
+- Snooze/reschedule is handled **entirely on the client side**
+- Both server timer and client fallback timer fire at fixed `hh:00/15/30/45` boundaries regardless of snooze setting
+- When a snooze time is set (e.g., 14:00), the client **ignores timer events** until that time
+- Example: If snooze is set to 14:00, the events at 13:45 and earlier are ignored; popup shows at 14:00
+
+**Implementation details:**
+- The client uses SignalR's `connection.onclose` and `connection.onreconnected` events to detect state changes
+- Fallback timer aligns to clock boundaries (same as server timer)
+- A UI banner shows: "Disconnected from server — using local timer"
+- All data remains in IndexedDB, so no data is lost during outages
+- Duplicate popup suppression: if a popup was shown within the last 30 seconds, suppress the next one (handles edge case of reconnection timing)
+
+This ensures the app continues to work even during extended server outages.
 
 ### 3.2 Task Entry
 
@@ -222,6 +250,15 @@ When the user opens the app or logs their first task of a new calendar day, a da
 
 All slot durations are **rounded to the nearest 15-minute boundary** and stored in `HH:mm` format:
 
+| Actual elapsed | Recorded duration |
+|---|---|
+| 00m 00s – 07m 00s | 00:00 |
+| 07m 01s – 22m 00s | 00:15 |
+| 22m 01s – 37m 00s | 00:30 |
+| 37m 01s – 52m 00s | 00:45 |
+| 52m 01s – 67m 00s | 01:00 |
+
+**Special case for first interval (00:00 – 07:00 elapsed):** Round to whichever boundary is closer to the current time — `00:00` or `00:15`.
 
 Start times are also **rounded to the nearest 15-minute boundary**. For example:
 - 09:07 → 09:00
@@ -550,11 +587,15 @@ Content-Type: application/json
             │               Auto-confirm after 10 min of inactivity
             │
             └── User snoozes / reschedules next popup
-                      └──► Notify server via SignalR to reschedule timer
+                      └──► Store snooze time in client memory
+                             Timer events continue firing at hh:00/15/30/45
+                             Client ignores events until snooze time reached
 
 [User reschedules next popup from UI]
       │
-      └──► SignalR call to server → TimerService reschedules to specified time
+      └──► Store snooze time in client memory
+           Both server and client timers continue firing at hh:00/15/30/45
+           Client ignores events until snooze time
 
 [User closes browser tab]
       │
@@ -580,6 +621,25 @@ Content-Type: application/json
       │
       └──► Open edit dialog for that row's editable fields
            On save → Recalculate all dependent fields for this and all subsequent entries
+
+[SignalR connection lost]
+      │
+      ├── Client detects disconnect via connection.onclose
+      ├── Start client-side fallback timer (aligned to hh:00/15/30/45)
+      └──► Show banner: "Disconnected from server — using local timer"
+
+[SignalR connection restored]
+      │
+      ├── Client detects reconnect via connection.onreconnected
+      ├── Stop fallback timer
+      └──► Hide banner, resume listening to server timer events
+
+[Timer event received (server or client fallback)]
+      │
+      ├── Snooze time set and not yet reached?
+      │     └──► Ignore event, no popup
+      │
+      └──► No snooze or snooze time passed → Show check-in popup
 ```
 
 ---
@@ -619,6 +679,7 @@ jtra/
 │   │   │   └── SettingsView.razor       # Settings screen
 │   │   ├── Services/
 │   │   │   ├── TimerHubClient.cs        # SignalR client connection
+│   │   │   ├── FallbackTimerService.cs  # Client-side timer when disconnected
 │   │   │   ├── NotificationService.cs   # Web Notifications API wrapper (system-level notifications)
 │   │   │   ├── IndexedDbService.cs      # IndexedDB operations (time entries, settings, cache)
 │   │   │   ├── CsvExportService.cs      # CSV export/import logic
@@ -696,6 +757,8 @@ jtra/
 | 28 | How are configurable types stored? | **Single JSON object** under `configurableTypes` key in settings store. Enables easy import/export. |
 | 29 | What UI for gap entry addition? | **Simple entry form** with no pre-filled values. User fills in type, ticket (if applicable), and description. |
 | 30 | Should startup popup pre-fill previous task? | **No** — popup always shows empty fields. If same task continues, user confirms without creating a new entry. |
+| 31 | How does snooze/reschedule work with server timer? | **Client-side only** — both server and client fallback timers fire at fixed `hh:00/15/30/45` boundaries. Client ignores events when snooze is active. E.g., snooze set to 14:00 → events at 13:45 ignored, popup at 14:00. |
+| 32 | What happens when server connection is lost? | **Client-side fallback timer** — fires at same `hh:00/15/30/45` boundaries. UI shows "Disconnected from server" banner. Snooze handling remains client-side. |
 
 ---
 
