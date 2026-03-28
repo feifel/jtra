@@ -1,0 +1,109 @@
+@page "/tasktypes"
+@implements IDisposable
+
+<PageTitle>JTRA - Task Types</PageTitle>
+
+<h2>Task Types</h2>
+
+<div class="settings-form">
+    <h3>Configurable Task Types</h3>
+    
+    @for (int i = 0; i < settings.ConfigurableTypes.Count; i++)
+    {
+        var index = i;
+        <div class="config-type-row">
+            <input type="text" @bind="settings.ConfigurableTypes[index].DisplayName" class="form-control form-control-sm" placeholder="Type Name (required)" style="flex: 1;" />
+            <input type="text" @bind="settings.ConfigurableTypes[index].LinkedTicket" class="form-control form-control-sm" placeholder="Ticket" style="flex: 1;" />
+            <input type="text" @bind="settings.ConfigurableTypes[index].Description" class="form-control form-control-sm" placeholder="Default Text" style="flex: 1.5;" />
+            <button class="btn btn-sm btn-outline-danger" type="button" @onclick="() => RemoveConfigType(index)">X</button>
+        </div>
+    }
+    
+    <button class="btn btn-sm btn-outline-primary" type="button" @onclick="AddConfigType">+ Add Type</button>
+
+    <div class="actions">
+        <button class="btn btn-primary" @onclick="SaveSettings">Save</button>
+        <button class="btn btn-secondary" @onclick="ResetToDefaults">Reset to Defaults</button>
+    </div>
+</div>
+
+@code {
+    [Inject] private AppState AppState { get; set; } = default!;
+
+    private AppSettings settings = new();
+
+    protected override void OnInitialized()
+    {
+        settings = new AppSettings
+        {
+            ConfigurableTypes = AppState.Settings.ConfigurableTypes.Select(c => new ConfigurableType
+            {
+                Type = c.Type,
+                DisplayName = c.DisplayName,
+                LinkedTicket = c.LinkedTicket,
+                Description = c.Description,
+                Enabled = c.Enabled
+            }).ToList()
+        };
+
+        if (!settings.ConfigurableTypes.Any())
+        {
+            InitializeDefaultConfigurableTypes();
+        }
+
+        AppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+    }
+
+    private void InitializeDefaultConfigurableTypes()
+    {
+        settings.ConfigurableTypes = new List<ConfigurableType>
+        {
+            new() { Type = TaskType.Messages, DisplayName = "Messages", Enabled = true },
+            new() { Type = TaskType.Support, DisplayName = "Support", Enabled = true },
+            new() { Type = TaskType.Meetings, DisplayName = "Meetings", Enabled = true },
+            new() { Type = TaskType.ChangeMgmt, DisplayName = "Change Management", Enabled = true },
+            new() { Type = TaskType.Reviews, DisplayName = "Reviews", Enabled = true },
+            new() { Type = TaskType.Training, DisplayName = "Training", Enabled = true },
+            new() { Type = TaskType.Other, DisplayName = "Other", Enabled = true }
+        };
+    }
+
+    private void AddConfigType()
+    {
+        settings.ConfigurableTypes.Add(new ConfigurableType { Type = TaskType.Other, DisplayName = "", Enabled = true });
+    }
+
+    private void RemoveConfigType(int index)
+    {
+        if (index >= 0 && index < settings.ConfigurableTypes.Count)
+        {
+            settings.ConfigurableTypes.RemoveAt(index);
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        var updatedSettings = AppState.Settings;
+        updatedSettings.ConfigurableTypes = settings.ConfigurableTypes
+            .Where(c => !string.IsNullOrWhiteSpace(c.DisplayName))
+            .Select((c, i) => new ConfigurableType
+            {
+                Type = (TaskType)Enum.GetValues(typeof(TaskType)).GetValue(Math.Min(i + 2, Enum.GetValues(typeof(TaskType)).Length - 1))!,
+                DisplayName = c.DisplayName,
+                LinkedTicket = c.LinkedTicket,
+                Description = c.Description,
+                Enabled = true
+            }).ToList();
+        await AppState.SaveSettingsAsync(updatedSettings);
+    }
+
+    private void ResetToDefaults()
+    {
+        InitializeDefaultConfigurableTypes();
+    }
+}
