@@ -64,11 +64,11 @@
     <div class="entries-list">
         <div class="entry-row entry-header">
             <div class="entry-time">Time</div>
-            <div class="entry-type">Type</div>
+            <div class="">Type</div>
             <div class="entry-ticket">Ticket</div>
             <div class="entry-description">Description</div>
             <div class="entry-duration">Duration</div>
-            <div class="entry-actions">Pending</div>
+            <div class="entry-actions" style="text-align: center;">Pending</div>
         </div>
         @foreach (var entry in DisplayedEntries.OrderByDescending(e => e.StartTime))
         {
@@ -78,7 +78,7 @@
                 <div class="entry-ticket">@entry.Ticket</div>
                 <div class="entry-description">@entry.Description</div>
                 <div class="entry-duration">@FormatTime(entry.Duration)</div>
-                <div class="entry-actions">
+                <div class="entry-actions" style="display: flex; justify-content: center; align-items: center;">
                     <input type="checkbox" @bind="entry.SubmittedToJira" @bind:event="oninput" @onclick:stopPropagation="true" @onchange="() => SaveSubmitted(entry)" />
                 </div>
             </div>

@@ -193,18 +193,14 @@
         else if (minutes <= 37) roundedMinutes = 30;
         else roundedMinutes = 45;
 
-        var result = new DateTime(dt.Year, dt.Month, dt.Day, dt.Hour, 0, 0);
+        int hour = dt.Hour;
         
         if (minutes > 52)
         {
-            result = result.AddHours(1);
-        }
-        else
-        {
-            result = result.AddMinutes(roundedMinutes);
+            hour = (hour + 1) % 24;
         }
 
-        return result;
+        return new DateTime(dt.Year, dt.Month, dt.Day, hour, roundedMinutes, 0);
     }
 
     private static string FormatTime(DateTime dt) => dt.ToString("HH:mm");

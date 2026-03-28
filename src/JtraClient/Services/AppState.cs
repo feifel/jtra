@@ -60,7 +60,7 @@ public class AppState
                 Type = Enum.Parse<TaskType>(connectionState.LastTaskType ?? "Ticket"),
                 Ticket = connectionState.LastTicket,
                 Description = connectionState.LastDescription,
-                StartTime = connectionState.LastStartTime ?? DateTime.Now.ToString("HH:mm")
+                StartTime = SafeParseTime(connectionState.LastStartTime)
             };
         }
 
@@ -71,6 +71,23 @@ public class AppState
 
         CalculateNextCheckIn();
         NotifyStateChanged();
+    }
+
+    private static string SafeParseTime(string? time)
+    {
+        if (string.IsNullOrEmpty(time)) return DateTime.Now.ToString("HH:mm");
+        
+        var parts = time.Split(':');
+        if (parts.Length >= 2)
+        {
+            if (int.TryParse(parts[0], out var hours) && int.TryParse(parts[1], out var minutes))
+            {
+                hours = Math.Clamp(hours, 0, 23);
+                minutes = Math.Clamp(minutes, 0, 59);
+                return $"{hours:D2}:{minutes:D2}";
+            }
+        }
+        return DateTime.Now.ToString("HH:mm");
     }
 
     public async Task ConfirmCheckIn(TaskType type, string? ticket, string? description)
@@ -112,11 +129,20 @@ public class AppState
     public async Task ConfirmCheckIn(string startTime, TaskType type, string? ticket, string? description)
     {
         var now = DateTime.Now;
-        var today = now.ToString("yyyy-MM-dd");
+        var entryDate = now.Date;
+
+        if (TimeSpan.TryParse(startTime, out var entryTime))
+        {
+            var entryDateTime = entryDate.Add(entryTime);
+            if (entryDateTime.TimeOfDay < now.TimeOfDay - TimeSpan.FromMinutes(15))
+            {
+                entryDate = entryDate.AddDays(1);
+            }
+        }
 
         var newEntry = new TimeEntry
         {
-            Date = today,
+            Date = entryDate.ToString("yyyy-MM-dd"),
             StartTime = startTime,
             Type = type,
             Ticket = type == TaskType.Ticket ? ticket : type == TaskType.Break ? null : GetLinkedTicket(type),
@@ -126,7 +152,10 @@ public class AppState
 
         newEntry.Id = await _indexedDb.AddTimeEntryAsync(newEntry);
         CurrentTask = newEntry;
-        TodayEntries.Add(newEntry);
+        if (newEntry.Date == DateTime.Today.ToString("yyyy-MM-dd"))
+        {
+            TodayEntries.Add(newEntry);
+        }
         AllEntries.Add(newEntry);
 
         if (!string.IsNullOrEmpty(newEntry.Ticket))
@@ -290,6 +319,11 @@ public class AppState
             nextHour++;
         }
 
+        if (nextHour >= 24)
+        {
+            nextHour = 0;
+        }
+
         NextCheckInTime = new DateTime(now.Year, now.Month, now.Day, nextHour, nextQuarter, 0);
     }
 
@@ -393,18 +427,14 @@ public class AppState
         else if (minutes <= 37) roundedMinutes = 30;
         else roundedMinutes = 45;
 
-        var result = new DateTime(dt.Year, dt.Month, dt.Day, dt.Hour, 0, 0);
+        int hour = dt.Hour;
         
         if (minutes > 52)
         {
-            result = result.AddHours(1);
-        }
-        else
-        {
-            result = result.AddMinutes(roundedMinutes);
+            hour = (hour + 1) % 24;
         }
 
-        return result;
+        return new DateTime(dt.Year, dt.Month, dt.Day, hour, roundedMinutes, 0);
     }
 
     private static string FormatDuration(TimeSpan duration)
@@ -418,11 +448,14 @@ public class AppState
         var parts = time.Split(':');
         if (parts.Length >= 2)
         {
-            var hours = int.Parse(parts[0]);
-            var minutes = int.Parse(parts[1]);
-            return DateTime.Today.AddHours(hours).AddMinutes(minutes);
+            if (int.TryParse(parts[0], out var hours) && int.TryParse(parts[1], out var minutes))
+            {
+                hours = Math.Clamp(hours, 0, 23);
+                minutes = Math.Clamp(minutes, 0, 59);
+                return DateTime.Today.AddHours(hours).AddMinutes(minutes);
+            }
         }
-        return DateTime.ParseExact(time, "HH:mm", null);
+        return DateTime.Today;
     }
 
     private async Task UpdateTicketCacheAsync(string ticketKey)
