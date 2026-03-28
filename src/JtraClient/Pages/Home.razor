@@ -28,7 +28,24 @@
             <button class="btn btn-sm btn-outline-primary" @onclick="GoToToday">Today</button>
         }
     </div>
-    <button class="btn btn-primary" @onclick="ShowNewEntryDialog">Add Entry</button>
+    <div class="header-buttons">
+        <button class="btn btn-primary" @onclick="ShowNewEntryDialog">Add Entry</button>
+        <div class="dropdown" style="position: relative; display: inline-block;">
+            <button class="btn btn-outline-secondary" @onclick="ToggleDataMenu" @onclick:stopPropagation="true">...</button>
+            @if (showDataMenu)
+            {
+                <div class="dropdown-menu show" style="display: block; position: absolute; right: 0; top: 100%; z-index: 1000;">
+                    <button class="dropdown-item" @onclick="ExportData" @onclick:stopPropagation="true">Export CSV</button>
+                    <label class="dropdown-item mb-0" style="cursor: pointer;">
+                        Import CSV
+                        <input type="file" @ref="fileInput" @onchange="ImportData" accept=".csv" style="display: none;" />
+                    </label>
+                    <div class="dropdown-divider"></div>
+                    <button class="dropdown-item text-danger" @onclick="ClearAllData" @onclick:stopPropagation="true">Clear All Data</button>
+                </div>
+            }
+        </div>
+    </div>
 </div>
 
 @if (DisplayedEntries.Any())
@@ -68,10 +85,15 @@ else
 
 @code {
     [Inject] private AppState AppState { get; set; } = default!;
+    [Inject] private IndexedDbService IndexedDb { get; set; } = default!;
+    [Inject] private CsvExportService CsvExport { get; set; } = default!;
+    [Inject] private IJSRuntime JS { get; set; } = default!;
 
     private bool showEditDialog = false;
+    private bool showDataMenu = false;
     private TimeEntry? editingEntry;
     private DateTime selectedDate = DateTime.Today;
+    private ElementReference fileInput;
 
     private IEnumerable<TimeEntry> DisplayedEntries => selectedDate.Date == DateTime.Today 
         ? AppState.TodayEntries 
@@ -144,6 +166,43 @@ else
     private void CloseEditDialog()
     {
         showEditDialog = false;
+    }
+
+    private void ToggleDataMenu()
+    {
+        showDataMenu = !showDataMenu;
+    }
+
+    private async Task ExportData()
+    {
+        showDataMenu = false;
+        var csv = CsvExport.ExportToCsv(AppState.AllEntries, AppState.Settings.CsvExportOldestFirst);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", $"jtra-export-{DateTime.Today:yyyy-MM-dd}.csv", "text/csv", base64);
+    }
+
+    private async Task ImportData(ChangeEventArgs e)
+    {
+        showDataMenu = false;
+        var fileContent = await JS.InvokeAsync<string>("readFileContentFromInput", fileInput);
+        if (string.IsNullOrEmpty(fileContent)) return;
+        var entries = CsvExport.ImportFromCsv(fileContent);
+        foreach (var entry in entries)
+        {
+            await AppState.AddNewEntryAsync(entry);
+        }
+    }
+
+    private async Task ClearAllData()
+    {
+        showDataMenu = false;
+        var confirmed = await JS.InvokeAsync<bool>("confirm", "Are you sure you want to clear all data? This cannot be undone.");
+        if (confirmed)
+        {
+            await IndexedDb.ClearAllDataAsync();
+            await AppState.RefreshEntriesAsync();
+        }
     }
 
     private static string FormatTime(string? time)

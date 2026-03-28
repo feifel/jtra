@@ -54,27 +54,11 @@
     </div>
 </div>
 
-<div class="data-section">
-    <h3>Data Management</h3>
-    <div class="actions">
-        <button class="btn btn-success" @onclick="ExportData">Export CSV</button>
-        <label class="btn btn-warning mb-0">
-            Import CSV
-            <input type="file" @ref="fileInput" @onchange="ImportData" accept=".csv" style="display: none;" />
-        </label>
-        <button class="btn btn-danger" @onclick="ClearAllData">Clear All Data</button>
-    </div>
-</div>
-
 @code {
     [Inject] private AppState AppState { get; set; } = default!;
-    [Inject] private IndexedDbService IndexedDb { get; set; } = default!;
-    [Inject] private CsvExportService CsvExport { get; set; } = default!;
-    [Inject] private IJSRuntime JS { get; set; } = default!;
 
     private AppSettings settings = new();
     private string defaultTargetHours = "08:00";
-    private ElementReference fileInput;
 
     protected override void OnInitialized()
     {
@@ -110,36 +94,5 @@
     {
         settings = new AppSettings();
         defaultTargetHours = "08:00";
-    }
-
-    private async Task ExportData()
-    {
-        var csv = CsvExport.ExportToCsv(AppState.AllEntries, settings.CsvExportOldestFirst);
-        var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
-        var base64 = Convert.ToBase64String(bytes);
-        
-        await JS.InvokeVoidAsync("downloadFile", $"jtra-export-{DateTime.Today:yyyy-MM-dd}.csv", "text/csv", base64);
-    }
-
-    private async Task ImportData(ChangeEventArgs e)
-    {
-        var fileContent = await JS.InvokeAsync<string>("readFileContentFromInput", fileInput);
-        if (string.IsNullOrEmpty(fileContent)) return;
-        
-        var entries = CsvExport.ImportFromCsv(fileContent);
-        foreach (var entry in entries)
-        {
-            await AppState.AddNewEntryAsync(entry);
-        }
-    }
-
-    private async Task ClearAllData()
-    {
-        var confirmed = await JS.InvokeAsync<bool>("confirm", "Are you sure you want to clear all data? This cannot be undone.");
-        if (confirmed)
-        {
-            await IndexedDb.ClearAllDataAsync();
-            await AppState.RefreshEntriesAsync();
-        }
     }
 }
