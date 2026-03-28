@@ -19,6 +19,7 @@ public class AppState
     public DateTime? SnoozedUntil { get; private set; }
     public bool ShowCheckInPopup { get; private set; }
     public bool IsConnectedToServer { get; private set; }
+    public bool IsTimerTriggeredPopup { get; private set; }
     
     public TimeSpan TodayAccumulated { get; private set; }
     public TimeSpan TodayTarget { get; private set; } = TimeSpan.FromHours(8);
@@ -96,6 +97,7 @@ public class AppState
         await SaveConnectionState();
         
         ShowCheckInPopup = false;
+        IsTimerTriggeredPopup = false;
         SnoozedUntil = null;
         CalculateNextCheckIn();
         await RecalculateAllEntriesAsync();
@@ -125,6 +127,7 @@ public class AppState
         await SaveConnectionState();
         
         ShowCheckInPopup = false;
+        IsTimerTriggeredPopup = false;
         SnoozedUntil = null;
         CalculateNextCheckIn();
         await RecalculateAllEntriesAsync();
@@ -174,6 +177,7 @@ public class AppState
         }
 
         ShowCheckInPopup = true;
+        IsTimerTriggeredPopup = true;
         SnoozedUntil = null;
         NotifyStateChanged();
     }
@@ -181,12 +185,14 @@ public class AppState
     public void ShowAddEntryPopup()
     {
         ShowCheckInPopup = true;
+        IsTimerTriggeredPopup = false;
         NotifyStateChanged();
     }
 
     public void HideCheckInPopup()
     {
         ShowCheckInPopup = false;
+        IsTimerTriggeredPopup = false;
         NotifyStateChanged();
     }
 
@@ -319,7 +325,7 @@ public class AppState
                 }
                 else
                 {
-                    if (entry.Date == today)
+                    if (entry.Date == today && entry != CurrentTask)
                     {
                         endTime = now;
                     }

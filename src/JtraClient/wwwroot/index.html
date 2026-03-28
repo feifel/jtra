@@ -266,7 +266,15 @@
 
             show: function(title, body) {
                 if (Notification.permission === 'granted') {
-                    new Notification(title, { body: body, icon: '/icon-192.png' });
+                    const notification = new Notification(title, { 
+                        body: body, 
+                        icon: '/icon-192.png',
+                        requireInteraction: true
+                    });
+                    notification.onclick = function() {
+                        window.focus();
+                        notification.close();
+                    };
                 }
             }
         };

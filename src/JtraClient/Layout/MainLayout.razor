@@ -27,15 +27,31 @@
     [Inject] private NotificationService NotificationService { get; set; } = default!;
 
     private bool ShowCheckInPopup => AppState.ShowCheckInPopup;
+    private bool _lastPopupState = false;
 
     protected override void OnInitialized()
     {
-        AppState.OnChange += StateHasChanged;
+        AppState.OnChange += OnAppStateChanged;
     }
 
     public void Dispose()
     {
-        AppState.OnChange -= StateHasChanged;
+        AppState.OnChange -= OnAppStateChanged;
+    }
+
+    private void OnAppStateChanged()
+    {
+        if (AppState.ShowCheckInPopup && !_lastPopupState && AppState.IsTimerTriggeredPopup)
+        {
+            _ = ShowCheckInNotification();
+        }
+        _lastPopupState = AppState.ShowCheckInPopup;
+        StateHasChanged();
+    }
+
+    private async Task ShowCheckInNotification()
+    {
+        await NotificationService.ShowNotificationAsync("JTRA Check-in", "Time to record your current task!");
     }
 
     private async Task HandleCheckInConfirm((TaskType type, string? ticket, string? description) args)

@@ -35,7 +35,7 @@
                 <div class="entry-description">@entry.Description</div>
                 <div class="entry-duration">@FormatTime(entry.Duration)</div>
                 <div class="entry-actions">
-                    @if (entry.Type == TaskType.Ticket && !entry.SubmittedToJira && !string.IsNullOrEmpty(entry.Ticket))
+                    @if (!string.IsNullOrEmpty(entry.Ticket) && !entry.SubmittedToJira)
                     {
                         <span class="badge bg-warning">Pending</span>
                     }
