@@ -33,8 +33,9 @@
     </div>
 
     <div class="form-group">
-        <label>Cache TTL (days)</label>
-        <input type="number" @bind="settings.CacheTtlDays" class="form-control" min="1" max="30" />
+        <label>Ticket Cache Size</label>
+        <input type="number" @bind="settings.TicketCacheSize" class="form-control" min="5" max="100" />
+        <small class="form-text text-muted">Maximum number of recently used tickets to cache.</small>
     </div>
 
     <div class="form-group form-check">
@@ -99,7 +100,7 @@
             DefaultTargetHours = AppState.Settings.DefaultTargetHours,
             MaxSnoozeHours = AppState.Settings.MaxSnoozeHours,
             AutoConfirmBreakMinutes = AppState.Settings.AutoConfirmBreakMinutes,
-            CacheTtlDays = AppState.Settings.CacheTtlDays,
+            TicketCacheSize = AppState.Settings.TicketCacheSize,
             Use24HourFormat = AppState.Settings.Use24HourFormat,
             CsvExportOldestFirst = AppState.Settings.CsvExportOldestFirst,
             ConfigurableTypes = AppState.Settings.ConfigurableTypes.Select(c => new ConfigurableType

@@ -1,0 +1,82 @@
+@page "/favorites"
+@implements IDisposable
+
+<PageTitle>JTRA - Favorites</PageTitle>
+
+<h2>Favorites</h2>
+
+<div class="favorites-info">
+    <p>Tickets you frequently use will appear here. They are automatically added when you create time entries.</p>
+    <small class="text-muted">Maximum: @AppState.Settings.TicketCacheSize tickets</small>
+</div>
+
+@if (cachedTickets.Any())
+{
+    <div class="entries-list">
+        @foreach (var ticket in cachedTickets.OrderByDescending(t => t.LastUsedAt))
+        {
+            <div class="entry-row">
+                <div class="entry-ticket">
+                    <a href="@GetJiraTicketUrl(ticket.TicketKey)" target="_blank">@ticket.TicketKey</a>
+                </div>
+                <div class="entry-description">@ticket.Summary</div>
+                <div class="entry-count">@ticket.UseCount uses</div>
+                <div class="entry-actions">
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteTicket(ticket.TicketKey)">Remove</button>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="actions">
+        <button class="btn btn-outline-secondary" @onclick="ClearAllFavorites">Clear All</button>
+    </div>
+}
+else
+{
+    <p class="no-entries">No favorite tickets yet. They will be added automatically when you create time entries with ticket numbers.</p>
+}
+
+@code {
+    [Inject] private AppState AppState { get; set; } = default!;
+    [Inject] private IndexedDbService IndexedDb { get; set; } = default!;
+
+    private List<TicketCache> cachedTickets = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCachedTickets();
+        AppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+    }
+
+    private async Task LoadCachedTickets()
+    {
+        cachedTickets = await IndexedDb.GetAllCachedTicketsAsync();
+    }
+
+    private string GetJiraTicketUrl(string ticketKey)
+    {
+        var baseUrl = AppState.Settings.JiraBaseUrl;
+        if (string.IsNullOrEmpty(baseUrl)) return "#";
+        return baseUrl.TrimEnd('/') + "/browse/" + ticketKey;
+    }
+
+    private async Task DeleteTicket(string ticketKey)
+    {
+        await IndexedDb.DeleteCachedTicketAsync(ticketKey);
+        await LoadCachedTickets();
+        StateHasChanged();
+    }
+
+    private async Task ClearAllFavorites()
+    {
+        await IndexedDb.ClearTicketCacheAsync();
+        cachedTickets = new List<TicketCache>();
+        StateHasChanged();
+    }
+}

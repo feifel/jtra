@@ -98,10 +98,27 @@ public class IndexedDbService
         return await InvokeAsync<TicketCache>("indexedDbInterop.getTicketFromCache", ticketKey);
     }
 
+    public async Task<List<TicketCache>> GetAllCachedTicketsAsync()
+    {
+        var tickets = await InvokeAsync<List<TicketCache>>("indexedDbInterop.getAllCachedTickets");
+        return tickets ?? new List<TicketCache>();
+    }
+
     public async Task AddTicketToCacheAsync(TicketCache ticket)
     {
         var element = ToJsonElement(ticket, JtraJsonContext.Default.TicketCache);
         await _jsRuntime.InvokeVoidAsync("indexedDbInterop.addTicketToCache", element);
+    }
+
+    public async Task UpdateTicketCacheAsync(TicketCache ticket)
+    {
+        var element = ToJsonElement(ticket, JtraJsonContext.Default.TicketCache);
+        await _jsRuntime.InvokeVoidAsync("indexedDbInterop.updateTicketCache", element);
+    }
+
+    public async Task DeleteCachedTicketAsync(string ticketKey)
+    {
+        await _jsRuntime.InvokeVoidAsync("indexedDbInterop.deleteCachedTicket", ticketKey);
     }
 
     public async Task ClearTicketCacheAsync()

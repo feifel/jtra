@@ -8,7 +8,7 @@ public class AppSettings
     public bool Use24HourFormat { get; set; } = true;
     public int MaxSnoozeHours { get; set; } = 4;
     public int AutoConfirmBreakMinutes { get; set; } = 10;
-    public int CacheTtlDays { get; set; } = 7;
+    public int TicketCacheSize { get; set; } = 20;
     public bool CsvExportOldestFirst { get; set; } = true;
     public List<ConfigurableType> ConfigurableTypes { get; set; } = new();
 }

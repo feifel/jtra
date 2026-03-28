@@ -9,6 +9,7 @@ namespace JtraClient.Services;
 [JsonSerializable(typeof(List<ConfigurableType>))]
 [JsonSerializable(typeof(ConfigurableType))]
 [JsonSerializable(typeof(TicketCache))]
+[JsonSerializable(typeof(List<TicketCache>))]
 [JsonSerializable(typeof(ConnectionState))]
 [JsonSerializable(typeof(int))]
 [JsonSerializable(typeof(string))]

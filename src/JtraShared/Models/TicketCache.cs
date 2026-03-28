@@ -4,6 +4,6 @@ public class TicketCache
 {
     public string TicketKey { get; set; } = string.Empty;
     public string Summary { get; set; } = string.Empty;
-    public DateTime FetchedAt { get; set; }
-    public DateTime ExpiresAt { get; set; }
+    public int UseCount { get; set; } = 1;
+    public DateTime LastUsedAt { get; set; } = DateTime.Now;
 }

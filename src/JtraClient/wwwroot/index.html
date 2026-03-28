@@ -59,7 +59,7 @@
                         
                         if (!db.objectStoreNames.contains('ticket_cache')) {
                             const cacheStore = db.createObjectStore('ticket_cache', { keyPath: 'ticketKey' });
-                            cacheStore.createIndex('expiresAt', 'expiresAt', { unique: false });
+                            cacheStore.createIndex('lastUsedAt', 'lastUsedAt', { unique: false });
                         }
                         
                         if (!db.objectStoreNames.contains('connection_state')) {
@@ -170,14 +170,18 @@
                     const store = transaction.objectStore('ticket_cache');
                     const request = store.get(ticketKey);
                     
-                    request.onsuccess = () => {
-                        const result = request.result;
-                        if (result && new Date(result.expiresAt) > new Date()) {
-                            resolve(result);
-                        } else {
-                            resolve(null);
-                        }
-                    };
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            },
+
+            getAllCachedTickets: function() {
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction(['ticket_cache'], 'readonly');
+                    const store = transaction.objectStore('ticket_cache');
+                    const request = store.getAll();
+                    
+                    request.onsuccess = () => resolve(request.result);
                     request.onerror = () => reject(request.error);
                 });
             },
@@ -187,6 +191,28 @@
                     const transaction = this.db.transaction(['ticket_cache'], 'readwrite');
                     const store = transaction.objectStore('ticket_cache');
                     const request = store.put(ticket);
+                    
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+            },
+
+            updateTicketCache: function(ticket) {
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction(['ticket_cache'], 'readwrite');
+                    const store = transaction.objectStore('ticket_cache');
+                    const request = store.put(ticket);
+                    
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+            },
+
+            deleteCachedTicket: function(ticketKey) {
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction(['ticket_cache'], 'readwrite');
+                    const store = transaction.objectStore('ticket_cache');
+                    const request = store.delete(ticketKey);
                     
                     request.onsuccess = () => resolve();
                     request.onerror = () => reject(request.error);

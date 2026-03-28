@@ -1,4 +1,5 @@
 @inject AppState AppState
+@inject IndexedDbService IndexedDb
 
 <div class="popup-overlay" @onclick="Close">
     <div class="popup-content" @onclick:stopPropagation="true">
@@ -30,7 +31,10 @@
         {
             <div class="form-group">
                 <label>Ticket</label>
-                <input type="text" @bind="ticket" @bind:event="oninput" class="form-control" placeholder="JIRA-123" @onkeydown="HandleKeyDown" />
+                <div class="input-with-button">
+                    <input type="text" @bind="ticket" @bind:event="oninput" class="form-control" placeholder="JIRA-123" @onkeydown="HandleKeyDown" />
+                    <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="ShowTicketPicker">...</button>
+                </div>
             </div>
         }
         else if (HasLinkedTicket(selectedType))
@@ -66,6 +70,35 @@
                 <button class="btn btn-sm btn-outline-secondary" @onclick="CancelSnooze">Cancel</button>
             </div>
         }
+
+        @if (showTicketPicker)
+        {
+            <div class="ticket-picker">
+                <div class="ticket-picker-header">
+                    <span>Select from Favorites</span>
+                    <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="HideTicketPicker">X</button>
+                </div>
+                @if (favoriteTickets.Any())
+                {
+                    <div class="ticket-picker-list">
+                        @foreach (var fav in favoriteTickets.OrderByDescending(t => t.LastUsedAt))
+                        {
+                            <div class="ticket-picker-item" @onclick="() => SelectTicket(fav.TicketKey)">
+                                <span class="ticket-key">@fav.TicketKey</span>
+                                @if (!string.IsNullOrEmpty(fav.Summary))
+                                {
+                                    <span class="ticket-summary">@fav.Summary</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="ticket-picker-empty">No favorite tickets yet</div>
+                }
+            </div>
+        }
     </div>
 </div>
 
@@ -78,6 +111,8 @@
     private string? ticket;
     private string? description;
     private bool showSnoozePicker;
+    private bool showTicketPicker;
+    private List<TicketCache> favoriteTickets = new();
     private string selectedTime = "";
     private string snoozeTimeStr = "";
     private List<string> timeOptions = new();
@@ -101,7 +136,7 @@
         return configType?.Description;
     }
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         var now = DateTime.Now;
         var rounded = RoundToNearest15Minutes(now);
@@ -119,6 +154,25 @@
         {
             description = GetDefaultDescription(selectedType);
         }
+
+        favoriteTickets = await IndexedDb.GetAllCachedTicketsAsync();
+    }
+
+    private async Task ShowTicketPicker()
+    {
+        favoriteTickets = await IndexedDb.GetAllCachedTicketsAsync();
+        showTicketPicker = true;
+    }
+
+    private void HideTicketPicker()
+    {
+        showTicketPicker = false;
+    }
+
+    private void SelectTicket(string ticketKey)
+    {
+        ticket = ticketKey;
+        showTicketPicker = false;
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)

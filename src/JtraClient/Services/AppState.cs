@@ -94,6 +94,11 @@ public class AppState
         TodayEntries.Add(newEntry);
         AllEntries.Add(newEntry);
 
+        if (!string.IsNullOrEmpty(newEntry.Ticket))
+        {
+            await UpdateTicketCacheAsync(newEntry.Ticket);
+        }
+
         await SaveConnectionState();
         
         ShowCheckInPopup = false;
@@ -123,6 +128,11 @@ public class AppState
         CurrentTask = newEntry;
         TodayEntries.Add(newEntry);
         AllEntries.Add(newEntry);
+
+        if (!string.IsNullOrEmpty(newEntry.Ticket))
+        {
+            await UpdateTicketCacheAsync(newEntry.Ticket);
+        }
 
         await SaveConnectionState();
         
@@ -413,6 +423,37 @@ public class AppState
             return DateTime.Today.AddHours(hours).AddMinutes(minutes);
         }
         return DateTime.ParseExact(time, "HH:mm", null);
+    }
+
+    private async Task UpdateTicketCacheAsync(string ticketKey)
+    {
+        var existing = await _indexedDb.GetTicketFromCacheAsync(ticketKey);
+        
+        if (existing != null)
+        {
+            existing.UseCount++;
+            existing.LastUsedAt = DateTime.Now;
+            await _indexedDb.UpdateTicketCacheAsync(existing);
+        }
+        else
+        {
+            var allTickets = await _indexedDb.GetAllCachedTicketsAsync();
+            
+            if (allTickets.Count >= Settings.TicketCacheSize)
+            {
+                var oldest = allTickets.OrderBy(t => t.LastUsedAt).First();
+                await _indexedDb.DeleteCachedTicketAsync(oldest.TicketKey);
+            }
+            
+            var newTicket = new TicketCache
+            {
+                TicketKey = ticketKey,
+                Summary = "",
+                UseCount = 1,
+                LastUsedAt = DateTime.Now
+            };
+            await _indexedDb.AddTicketToCacheAsync(newTicket);
+        }
     }
 
     private async Task SaveConnectionState()

@@ -317,6 +317,89 @@ code {
     padding: 2rem;
 }
 
+.favorites-info {
+    margin-bottom: 1rem;
+    color: #6c757d;
+}
+
+.favorites-info p {
+    margin-bottom: 0.25rem;
+}
+
+.entry-count {
+    font-size: 0.875rem;
+    color: #6c757d;
+    min-width: 70px;
+}
+
+.input-with-button {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.input-with-button .form-control {
+    flex: 1;
+}
+
+.ticket-picker {
+    margin-top: 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.ticket-picker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    font-weight: 500;
+}
+
+.ticket-picker-list {
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.ticket-picker-item {
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.ticket-picker-item:last-child {
+    border-bottom: none;
+}
+
+.ticket-picker-item:hover {
+    background: #e7f1ff;
+}
+
+.ticket-key {
+    font-weight: 500;
+    min-width: 80px;
+}
+
+.ticket-summary {
+    color: #6c757d;
+    font-size: 0.875rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ticket-picker-empty {
+    padding: 1rem;
+    text-align: center;
+    color: #6c757d;
+}
+
 .next-checkin {
     color: #6c757d;
 }
