@@ -78,10 +78,34 @@ public class AppState
         var startTime = RoundToNearest15Minutes(now).ToString("HH:mm");
         var today = now.ToString("yyyy-MM-dd");
 
-        if (CurrentTask != null && !string.IsNullOrEmpty(CurrentTask.StartTime))
+        var newEntry = new TimeEntry
         {
-            await FinalizeCurrentEntry(startTime);
-        }
+            Date = today,
+            StartTime = startTime,
+            Type = type,
+            Ticket = type == TaskType.Ticket ? ticket : type == TaskType.Break ? null : GetLinkedTicket(type),
+            Description = description,
+            DayTargetHhmm = Settings.DefaultTargetHours
+        };
+
+        newEntry.Id = await _indexedDb.AddTimeEntryAsync(newEntry);
+        CurrentTask = newEntry;
+        TodayEntries.Add(newEntry);
+        AllEntries.Add(newEntry);
+
+        await SaveConnectionState();
+        
+        ShowCheckInPopup = false;
+        SnoozedUntil = null;
+        CalculateNextCheckIn();
+        await RecalculateAllEntriesAsync();
+        NotifyStateChanged();
+    }
+
+    public async Task ConfirmCheckIn(string startTime, TaskType type, string? ticket, string? description)
+    {
+        var now = DateTime.Now;
+        var today = now.ToString("yyyy-MM-dd");
 
         var newEntry = new TimeEntry
         {
@@ -103,7 +127,7 @@ public class AppState
         ShowCheckInPopup = false;
         SnoozedUntil = null;
         CalculateNextCheckIn();
-        RecalculateTodayStats();
+        await RecalculateAllEntriesAsync();
         NotifyStateChanged();
     }
 
@@ -160,6 +184,12 @@ public class AppState
         NotifyStateChanged();
     }
 
+    public void HideCheckInPopup()
+    {
+        ShowCheckInPopup = false;
+        NotifyStateChanged();
+    }
+
     public event Action<bool>? OnServerConnectionChanged;
 
     public void SetServerConnected(bool connected)
@@ -185,7 +215,7 @@ public class AppState
             TodayEntries[todayIndex] = entry;
         }
 
-        RecalculateAllEntries();
+        await RecalculateAllEntriesAsync();
         NotifyStateChanged();
     }
 
@@ -197,7 +227,7 @@ public class AppState
         {
             TodayEntries.Add(entry);
         }
-        RecalculateAllEntries();
+        await RecalculateAllEntriesAsync();
         NotifyStateChanged();
     }
 
@@ -206,7 +236,7 @@ public class AppState
         await _indexedDb.DeleteTimeEntryAsync(id);
         AllEntries.RemoveAll(e => e.Id == id);
         TodayEntries.RemoveAll(e => e.Id == id);
-        RecalculateAllEntries();
+        await RecalculateAllEntriesAsync();
         NotifyStateChanged();
     }
 
@@ -260,22 +290,58 @@ public class AppState
         }
     }
 
-    private void RecalculateAllEntries()
+    private async Task RecalculateAllEntriesAsync()
     {
         var groupedByDate = AllEntries.GroupBy(e => e.Date).OrderBy(g => g.Key);
+        var today = DateTime.Today.ToString("yyyy-MM-dd");
+        var now = DateTime.Now;
+        var updatedEntries = new List<TimeEntry>();
         
         foreach (var group in groupedByDate)
         {
             var entries = group.OrderBy(e => e.StartTime).ToList();
             TimeSpan accumulated = TimeSpan.Zero;
             
-            foreach (var entry in entries)
+            for (int i = 0; i < entries.Count; i++)
             {
+                var entry = entries[i];
+                
+                var startTime = ParseTime(entry.StartTime);
+                DateTime endTime;
+                
+                if (i < entries.Count - 1)
+                {
+                    endTime = ParseTime(entries[i + 1].StartTime);
+                    if (endTime <= startTime)
+                    {
+                        endTime = endTime.AddDays(1);
+                    }
+                }
+                else
+                {
+                    if (entry.Date == today)
+                    {
+                        endTime = now;
+                    }
+                    else
+                    {
+                        endTime = startTime;
+                    }
+                }
+                
+                var duration = endTime - startTime;
+                var newDuration = duration > TimeSpan.Zero ? FormatDuration(duration) : "";
+                if (entry.Duration != newDuration)
+                {
+                    entry.Duration = newDuration;
+                    updatedEntries.Add(entry);
+                }
+                
                 if (entry.Type != TaskType.Break && !string.IsNullOrEmpty(entry.Duration))
                 {
-                    if (TimeSpan.TryParse(entry.Duration, out var duration))
+                    if (TimeSpan.TryParse(entry.Duration, out var dur))
                     {
-                        accumulated += duration;
+                        accumulated += dur;
                     }
                 }
                 
@@ -289,6 +355,11 @@ public class AppState
                     entry.DayDeviationDays = deviation.TotalHours / 8.0;
                 }
             }
+        }
+
+        foreach (var entry in updatedEntries)
+        {
+            await _indexedDb.UpdateTimeEntryAsync(entry);
         }
 
         RecalculateTodayStats();
@@ -321,6 +392,19 @@ public class AppState
     private static string FormatDuration(TimeSpan duration)
     {
         return $"{(int)Math.Floor(duration.TotalHours):D2}:{duration.Minutes:D2}";
+    }
+
+    private static DateTime ParseTime(string time)
+    {
+        if (string.IsNullOrEmpty(time)) return DateTime.Today;
+        var parts = time.Split(':');
+        if (parts.Length >= 2)
+        {
+            var hours = int.Parse(parts[0]);
+            var minutes = int.Parse(parts[1]);
+            return DateTime.Today.AddHours(hours).AddMinutes(minutes);
+        }
+        return DateTime.ParseExact(time, "HH:mm", null);
     }
 
     private async Task SaveConnectionState()

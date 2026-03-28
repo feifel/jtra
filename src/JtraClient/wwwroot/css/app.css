@@ -264,6 +264,11 @@ code {
 
 .popup-content .form-group .form-control {
     flex: 1;
+    min-width: 0;
+}
+
+.popup-content select.form-control {
+    cursor: pointer;
 }
 
 .config-type-row {

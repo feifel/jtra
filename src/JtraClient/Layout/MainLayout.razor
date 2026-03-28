@@ -19,7 +19,7 @@
 
 @if (ShowCheckInPopup)
 {
-    <CheckInPopup OnConfirm="HandleCheckInConfirm" OnSnoozeCallback="HandleSnooze" />
+    <CheckInPopup OnConfirm="HandleCheckInConfirm" OnSnoozeCallback="HandleSnooze" OnCancel="HandleCancelCheckIn" />
 }
 
 @code {
@@ -41,6 +41,17 @@
     private async Task HandleCheckInConfirm((TaskType type, string? ticket, string? description) args)
     {
         await AppState.ConfirmCheckIn(args.type, args.ticket, args.description);
+    }
+
+    private async Task HandleCheckInConfirm((string time, TaskType type, string? ticket, string? description) args)
+    {
+        await AppState.ConfirmCheckIn(args.time, args.type, args.ticket, args.description);
+    }
+
+    private Task HandleCancelCheckIn()
+    {
+        AppState.HideCheckInPopup();
+        return Task.CompletedTask;
     }
 
     private async Task HandleSnooze(DateTime snoozeUntil)

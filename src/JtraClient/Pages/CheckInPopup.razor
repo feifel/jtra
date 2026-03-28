@@ -1,8 +1,18 @@
 @inject AppState AppState
 
-<div class="popup-overlay" @onclick="OnOverlayClick">
+<div class="popup-overlay" @onclick="Close">
     <div class="popup-content" @onclick:stopPropagation="true">
-        <h3>Check-in: @DateTime.Now.ToString("HH:mm")</h3>
+        <h3>Check-in</h3>
+        
+        <div class="form-group">
+            <label>Time</label>
+            <select @bind="selectedTime" class="form-control">
+                @foreach (var t in timeOptions)
+                {
+                    <option value="@t">@t</option>
+                }
+            </select>
+        </div>
         
         <div class="form-group">
             <label>Task Type</label>
@@ -32,20 +42,26 @@
         }
 
         <div class="form-group">
-            <label>Description (optional)</label>
+            <label>Description</label>
             <input type="text" @bind="description" class="form-control" maxlength="100" placeholder="What are you working on?" />
         </div>
 
         <div class="popup-actions">
             <button class="btn btn-primary" @onclick="Confirm">Confirm</button>
             <button class="btn btn-secondary" @onclick="ShowSnooze">Snooze</button>
+            <button class="btn btn-outline-secondary" @onclick="Close">Cancel</button>
         </div>
 
         @if (showSnoozePicker)
         {
             <div class="snooze-picker">
                 <label>Snooze until:</label>
-                <input type="time" value="@snoozeTimeStr" @onchange="@((ChangeEventArgs e) => snoozeTimeStr = e.Value?.ToString() ?? "")" class="form-control" />
+                <select @bind="snoozeTimeStr" class="form-control">
+                    @foreach (var t in snoozeOptions)
+                    {
+                        <option value="@t">@t</option>
+                    }
+                </select>
                 <button class="btn btn-sm btn-secondary" @onclick="ConfirmSnooze">OK</button>
                 <button class="btn btn-sm btn-outline-secondary" @onclick="CancelSnooze">Cancel</button>
             </div>
@@ -54,14 +70,18 @@
 </div>
 
 @code {
-    [Parameter] public EventCallback<(TaskType type, string? ticket, string? description)> OnConfirm { get; set; }
+    [Parameter] public EventCallback<(string time, TaskType type, string? ticket, string? description)> OnConfirm { get; set; }
     [Parameter] public EventCallback<DateTime> OnSnoozeCallback { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
 
     private TaskType selectedType = TaskType.Ticket;
     private string? ticket;
     private string? description;
     private bool showSnoozePicker;
-    private string snoozeTimeStr = DateTime.Now.AddHours(1).ToString("HH:mm");
+    private string selectedTime = "";
+    private string snoozeTimeStr = "";
+    private List<string> timeOptions = new();
+    private List<string> snoozeOptions = new();
 
     private bool HasLinkedTicket(TaskType type)
     {
@@ -75,15 +95,81 @@
         return configType?.LinkedTicket;
     }
 
+    protected override void OnInitialized()
+    {
+        var now = DateTime.Now;
+        var rounded = RoundToNearest15Minutes(now);
+        
+        timeOptions = GenerateTimeOptions(rounded, 10);
+        selectedTime = FormatTime(rounded);
+
+        if (AppState.CurrentTask != null)
+        {
+            selectedType = AppState.CurrentTask.Type;
+            ticket = AppState.CurrentTask.Ticket;
+            description = AppState.CurrentTask.Description;
+        }
+    }
+
+    private static DateTime RoundToNearest15Minutes(DateTime dt)
+    {
+        int minutes = dt.Minute;
+        int roundedMinutes;
+        
+        if (minutes <= 7 || minutes > 52) roundedMinutes = 0;
+        else if (minutes <= 22) roundedMinutes = 15;
+        else if (minutes <= 37) roundedMinutes = 30;
+        else roundedMinutes = 45;
+
+        var result = new DateTime(dt.Year, dt.Month, dt.Day, dt.Hour, 0, 0);
+        
+        if (minutes > 52)
+        {
+            result = result.AddHours(1);
+        }
+        else
+        {
+            result = result.AddMinutes(roundedMinutes);
+        }
+
+        return result;
+    }
+
+    private static string FormatTime(DateTime dt) => dt.ToString("HH:mm");
+
+    private static List<string> GenerateTimeOptions(DateTime center, int countEachSide)
+    {
+        var options = new List<string>();
+        var baseTime = new DateTime(center.Year, center.Month, center.Day, 0, 0, 0);
+        
+        var totalMinutes = (int)center.TimeOfDay.TotalMinutes;
+        var roundedMinutes = (totalMinutes / 15) * 15;
+        
+        for (int i = -countEachSide; i <= countEachSide; i++)
+        {
+            var mins = roundedMinutes + (i * 15);
+            if (mins >= 0 && mins < 24 * 60)
+            {
+                var time = baseTime.AddMinutes(mins);
+                options.Add(FormatTime(time));
+            }
+        }
+        
+        return options;
+    }
+
     private async Task Confirm()
     {
         string? ticketValue = selectedType == TaskType.Ticket ? ticket : GetLinkedTicket(selectedType);
-        await OnConfirm.InvokeAsync((selectedType, ticketValue, description));
+        await OnConfirm.InvokeAsync((selectedTime, selectedType, ticketValue, description));
     }
 
     private void ShowSnooze()
     {
-        snoozeTimeStr = DateTime.Now.AddMinutes(15).ToString("HH:mm");
+        var now = DateTime.Now;
+        var rounded = RoundToNearest15Minutes(now.AddMinutes(15));
+        snoozeOptions = GenerateTimeOptions(rounded, 10);
+        snoozeTimeStr = FormatTime(rounded);
         showSnoozePicker = true;
     }
 
@@ -114,17 +200,8 @@
         showSnoozePicker = false;
     }
 
-    private void OnOverlayClick()
+    private async Task Close()
     {
-    }
-
-    protected override void OnInitialized()
-    {
-        if (AppState.CurrentTask != null)
-        {
-            selectedType = AppState.CurrentTask.Type;
-            ticket = AppState.CurrentTask.Ticket;
-            description = AppState.CurrentTask.Description;
-        }
+        await OnCancel.InvokeAsync();
     }
 }
