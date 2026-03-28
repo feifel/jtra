@@ -8,7 +8,7 @@ JTRA is a cross-platform web application that reminds the user every 15 minutes 
 
 ## 2. Technology Stack
 
-### Hybrid Architecture: Central Server + Browser-Local Storage
+### Architecture: Central Server + Browser-Local Storage
 
 | Layer | Technology | Rationale |
 |---|---|---|
@@ -65,20 +65,6 @@ JTRA is a cross-platform web application that reminds the user every 15 minutes 
                           JIRA Server
 ```
 
-### Why Hybrid Architecture?
-
-| Requirement | Hybrid (Central Server) | Self-Hosted |
-|---|---|---|
-| IT deployment simplicity | ✅ Single server to deploy/maintain | ❌ Deploy to each user's machine |
-| No user installation | ✅ Just open URL in browser | ✅ Run single .exe |
-| Timer reliability | ✅ Server-side with SignalR | ✅ Server-side |
-| JIRA CORS bypass | ✅ Server proxy | ✅ Server proxy |
-| Data stored on user's machine | ✅ IndexedDB in browser | ✅ IndexedDB in browser |
-| Works offline | ✅ PWA with cached UI | ✅ Full offline |
-| Multiple users | ✅ Single server serves all | ❌ One instance per user |
-| Browser tab required | ✅ Yes | ❌ Server runs independently |
-| Data portability | ✅ CSV export/import | ✅ CSV export/import |
-
 ### Server Deployment
 
 The central server is a standard .NET 8 web application that can be deployed to:
@@ -104,6 +90,7 @@ docker build -t jtra-server .
 - The timer fires at **fixed clock boundaries**: `hh:00`, `hh:15`, `hh:30`, `hh:45` — regardless of when the app was started or when the last confirmation occurred.
   - On startup, the timer calculates the time until the next boundary and schedules the first firing accordingly.
   - Example: if the app starts at 09:23, the first popup fires at 09:30.
+- **On app startup**, a check-in popup is always shown asking the user what they are working on. If the user is continuing their previous task, they can simply confirm it. If there's no previous task (first-time user), the popup shows empty fields for the user to fill in.
 - A **browser notification** is shown when the timer fires: "Time to check in: What are you working on?"
 - A **modal dialog** appears in the browser UI (triggered via SignalR from server).
 - **The current task is shown prominently** as the default selection.
@@ -125,6 +112,7 @@ docker build -t jtra-server .
   - Example: If the user is in a 2-hour meeting from 10:00 to 12:00, they can set the next popup to 12:00 instead of being asked at 10:15, 10:30, etc.
 - When a custom next popup time is set:
   - The timer is rescheduled to fire at the specified time instead of the next 15-minute boundary.
+  - The custom time is stored in memory only (not persisted). If the browser is closed, the next session starts with normal 15-minute boundary scheduling.
   - After the custom popup fires, the timer resumes normal 15-minute boundary scheduling.
   - The custom popup time must be in the future (at least 1 minute ahead).
   - The maximum snooze duration is configurable in Settings (default: 4 hours).
@@ -154,7 +142,7 @@ A task entry consists of:
 |---|---|
 | **Type** | Selected from the type dropdown (see below). Determines whether a JIRA ticket field is required and whether the entry is eligible for worklog submission. |
 | **JIRA Ticket** | Required only when type is `Ticket`. Auto-filled (and read-only) when the selected configurable type has a linked ticket configured. Hidden/disabled for types with no ticket association. Must match `[A-Z]+-[0-9]+` (e.g. `PROJ-123`). |
-| **Description** | Free text, max 100 characters. Pre-filled with the previous description for the same ticket/type combination. |
+| **Description** | Free text, max 100 characters. Empty by default when starting a new task. |
 
 #### IndexedDB Entry Lifecycle
 
@@ -226,7 +214,9 @@ When the user opens the app or logs their first task of a new calendar day, a da
 
 - Today's date (read-only)
 - **Target hours** for today — defaults to `08:00` (configurable), editable for this specific day (e.g. `04:00` for a half-day holiday)
-- The per-day override is stored in the config file keyed by date (`YYYY-MM-DD`)
+- The per-day override is stored in IndexedDB keyed by date (`YYYY-MM-DD`)
+
+**Cross-midnight handling**: If the previous day's last task was not a `Break`, a new entry is automatically created starting at `00:00:00` on the new day with the same task details. This ensures tasks don't span across multiple days. If the previous task was a `Break`, no automatic entry is created.
 
 ### 3.4 Time Rounding
 
@@ -235,10 +225,10 @@ All slot durations are **rounded up to the next 15-minute boundary** and stored 
 | Actual elapsed | Recorded duration |
 |---|---|
 | 00m 00s – 07m 00s | 00:00 |
-| 07m 00s – 22m 00s | 00:15 |
-| 22m 00s – 37m 00s | 00:30 |
-| 37m 00s – 52m 00s | 00:45 |
-| 52m 00s – 67m 00s | 01:00 |
+| 07m 01s – 22m 00s | 00:15 |
+| 22m 01s – 37m 00s | 00:30 |
+| 37m 01s – 52m 00s | 00:45 |
+| 52m 01s – 67m 00s | 01:00 |
 
 Start times are also **rounded to the nearest 15-minute boundary**. For example:
 - 09:07 → 09:00
@@ -304,7 +294,7 @@ Both rounded start time and rounded duration are stored in IndexedDB.
 
 Since IndexedDB is not directly accessible as a file, users can:
 - **Export to CSV** — Download all entries as a CSV file (Excel/LibreOffice compatible)
-- **Import from CSV** — Load entries from a previously exported CSV file (useful for backup restore or migration)
+- **Import from CSV** — Load entries from a previously exported CSV file; **overwrites all existing data** (useful for backup restore or migration)
 - Export format matches the original CSV schema for compatibility
 
 ```
@@ -430,7 +420,7 @@ Content-Type: application/json
 }
 ```
 
-- The `started` timestamp uses the rounded start time from the CSV, with the local timezone offset derived from the OS.
+- The `started` timestamp uses the rounded start time from IndexedDB, with the local timezone offset derived from the OS.
 - The `timeSpentSeconds` is the total duration of the grouped entries in seconds.
 - The `comment` is the shared description text.
 
@@ -497,7 +487,7 @@ PAT is a Personal Access Token generated by the user in their JIRA profile (supp
 ```
 GET /rest/api/2/issue/{issueKey}?fields=summary
 ```
-- Called once per new ticket key, result cached in `ticket-cache.json`
+- Called once per new ticket key, result cached in IndexedDB (`ticket_cache` store)
 - Cache entries expire after 7 days (configurable)
 - On cache miss or expiry, fetched fresh; on JIRA unavailability, stale cache is used
 
@@ -528,9 +518,15 @@ Content-Type: application/json
       ├── SignalR connection established
       ├── IndexedDB data loaded (entries, settings, cached tickets)
       │
-      ├── New calendar day? ──► Show Day Start dialog (set target hours)
+      ├── New calendar day?
+      │     ├── Yes → Show Day Start dialog (set target hours)
+      │     │        If previous task was not Break → Create new entry at 00:00:00
+      │     └── No → Continue
       │
-      └── Resume from last IndexedDB entry, wait for SignalR timer event
+      ├── Show check-in popup (always shown on startup)
+      │     └── User confirms current task or enters new task
+      │
+      └── Wait for SignalR timer events
           Show indicator if there's a time gap since last entry
 
 [15-min timer fires (server-side)]
@@ -580,7 +576,7 @@ Content-Type: application/json
 
 [User clicks Import]
       │
-      └──► Parse uploaded CSV → Clear/merge entries → Write to IndexedDB
+      └──► Parse uploaded CSV → Overwrite all existing entries → Write to IndexedDB
 
 [User double-clicks a historical entry in main window]
       │
@@ -692,6 +688,10 @@ jtra/
 | 18 | Should users see same data across devices/browsers? | **No** — each browser profile has independent data. This keeps architecture simple and data truly local. |
 | 19 | Styling approach? | **Blazor default styling** — no additional CSS framework required. |
 | 20 | Should notifications appear at system level? | **Yes** — Web Notifications API delivers to Windows Action Center, macOS Notification Center, Linux notifications, like Outlook web app. |
+| 21 | Should description be pre-filled with previous value? | **No** — description is empty by default when starting a new task. |
+| 22 | Should custom next popup time persist across sessions? | **No** — stored in memory only. On app restart, normal 15-minute boundary scheduling applies. |
+| 23 | What happens on app startup? | **Always show check-in popup** — user confirms current task or enters new task. First-time users see empty fields. |
+| 24 | How to handle tasks spanning midnight? | **Auto-create new entry** — if previous day's last task was not a `Break`, create a new entry at `00:00:00` on the new day with same task details. |
 
 ---
 
