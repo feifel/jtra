@@ -48,14 +48,14 @@
     {
         var index = i;
         <div class="config-type-row">
-            <input type="text" @bind="settings.ConfigurableTypes[index].DisplayName" class="form-control form-control-sm" placeholder="Type Name (required)" />
-            <input type="text" @bind="settings.ConfigurableTypes[index].LinkedTicket" class="form-control form-control-sm" placeholder="Ticket" />
-            <input type="text" @bind="settings.ConfigurableTypes[index].Description" class="form-control form-control-sm" placeholder="Default Text" />
-            <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveConfigType(index)">X</button>
+            <input type="text" @bind="settings.ConfigurableTypes[index].DisplayName" class="form-control form-control-sm" placeholder="Type Name (required)" style="flex: 1;" />
+            <input type="text" @bind="settings.ConfigurableTypes[index].LinkedTicket" class="form-control form-control-sm" placeholder="Ticket" style="flex: 1;" />
+            <input type="text" @bind="settings.ConfigurableTypes[index].Description" class="form-control form-control-sm" placeholder="Default Text" style="flex: 1.5;" />
+            <button class="btn btn-sm btn-outline-danger" type="button" @onclick="() => RemoveConfigType(index)">X</button>
         </div>
     }
     
-    <button class="btn btn-sm btn-outline-primary" @onclick="AddConfigType">+ Add Type</button>
+    <button class="btn btn-sm btn-outline-primary" type="button" @onclick="AddConfigType">+ Add Type</button>
 
     <div class="actions">
         <button class="btn btn-primary" @onclick="SaveSettings">Save Settings</button>
@@ -67,9 +67,9 @@
     <h3>Data Management</h3>
     <div class="actions">
         <button class="btn btn-success" @onclick="ExportData">Export CSV</button>
-        <label class="btn btn-warning">
+        <label class="btn btn-warning mb-0">
             Import CSV
-            <input type="file" @onchange="ImportData" accept=".csv" style="display: none;" />
+            <input type="file" @ref="fileInput" @onchange="ImportData" accept=".csv" style="display: none;" />
         </label>
         <button class="btn btn-danger" @onclick="ClearAllData">Clear All Data</button>
     </div>
@@ -83,6 +83,7 @@
 
     private AppSettings settings = new();
     private string defaultTargetHours = "08:00";
+    private ElementReference fileInput;
 
     protected override void OnInitialized()
     {
@@ -181,10 +182,7 @@
 
     private async Task ImportData(ChangeEventArgs e)
     {
-        var files = await JS.InvokeAsync<string[]>("getSelectedFiles");
-        if (files == null || files.Length == 0) return;
-        
-        var fileContent = await JS.InvokeAsync<string>("readFileContent");
+        var fileContent = await JS.InvokeAsync<string>("readFileContentFromInput", fileInput);
         if (string.IsNullOrEmpty(fileContent)) return;
         
         var entries = CsvExport.ImportFromCsv(fileContent);

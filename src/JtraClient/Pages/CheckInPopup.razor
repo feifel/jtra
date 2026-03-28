@@ -95,6 +95,12 @@
         return configType?.LinkedTicket;
     }
 
+    private string? GetDefaultDescription(TaskType type)
+    {
+        var configType = AppState.Settings.ConfigurableTypes.FirstOrDefault(c => c.Type == type);
+        return configType?.Description;
+    }
+
     protected override void OnInitialized()
     {
         var now = DateTime.Now;
@@ -108,6 +114,10 @@
             selectedType = AppState.CurrentTask.Type;
             ticket = AppState.CurrentTask.Ticket;
             description = AppState.CurrentTask.Description;
+        }
+        else
+        {
+            description = GetDefaultDescription(selectedType);
         }
     }
 

@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @implements IDisposable
 
 <PageTitle>JTRA - Home</PageTitle>
@@ -19,14 +19,22 @@
 </div>
 
 <div class="entries-header">
-    <h3>Today's Entries</h3>
+    <div class="date-navigation">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousDay">&lt;</button>
+        <input type="date" @bind="selectedDate" @bind:format="yyyy-MM-dd" class="form-control form-control-sm date-picker" />
+        <button class="btn btn-sm btn-outline-secondary" @onclick="NextDay">&gt;</button>
+        @if (selectedDate.Date != DateTime.Today)
+        {
+            <button class="btn btn-sm btn-outline-primary" @onclick="GoToToday">Today</button>
+        }
+    </div>
     <button class="btn btn-primary" @onclick="ShowNewEntryDialog">Add Entry</button>
 </div>
 
-@if (AppState.TodayEntries.Any())
+@if (DisplayedEntries.Any())
 {
     <div class="entries-list">
-        @foreach (var entry in AppState.TodayEntries.OrderByDescending(e => e.StartTime))
+        @foreach (var entry in DisplayedEntries.OrderByDescending(e => e.StartTime))
         {
             <div class="entry-row" @ondblclick="() => StartEdit(entry)">
                 <div class="entry-time">@FormatTime(entry.StartTime)</div>
@@ -50,7 +58,7 @@
 }
 else
 {
-    <p class="no-entries">No entries for today. Start by checking in!</p>
+    <p class="no-entries">No entries for @selectedDate.ToString("ddd, MMM d, yyyy").</p>
 }
 
 @if (showEditDialog && editingEntry != null)
@@ -63,6 +71,11 @@ else
 
     private bool showEditDialog = false;
     private TimeEntry? editingEntry;
+    private DateTime selectedDate = DateTime.Today;
+
+    private IEnumerable<TimeEntry> DisplayedEntries => selectedDate.Date == DateTime.Today 
+        ? AppState.TodayEntries 
+        : AppState.AllEntries.Where(e => e.Date == selectedDate.ToString("yyyy-MM-dd"));
 
     protected override void OnInitialized()
     {
@@ -74,8 +87,24 @@ else
         AppState.OnChange -= StateHasChanged;
     }
 
+    private void PreviousDay()
+    {
+        selectedDate = selectedDate.AddDays(-1);
+    }
+
+    private void NextDay()
+    {
+        selectedDate = selectedDate.AddDays(1);
+    }
+
+    private void GoToToday()
+    {
+        selectedDate = DateTime.Today;
+    }
+
     private void ShowNewEntryDialog()
     {
+        selectedDate = DateTime.Today;
         AppState.ShowAddEntryPopup();
     }
 

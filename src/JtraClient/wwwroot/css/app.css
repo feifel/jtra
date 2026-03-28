@@ -142,6 +142,27 @@ code {
     margin-bottom: 1rem;
 }
 
+.date-navigation {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.date-picker {
+    width: 150px;
+}
+
+.date-navigation {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.date-picker {
+    width: 160px;
+    text-align: center;
+}
+
 .entries-list {
     border: 1px solid #dee2e6;
     border-radius: 8px;
