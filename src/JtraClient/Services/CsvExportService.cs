@@ -9,7 +9,7 @@ public class CsvExportService
     {
         var sb = new StringBuilder();
         
-        sb.AppendLine("date,start_time,type,ticket,description,duration,day_accumulated_hhmm,day_accumulated_days,day_target_hhmm,day_deviation_hhmm,day_deviation_days,submitted_to_jira");
+        sb.AppendLine("date,start_time,type,ticket,description,duration,day_accumulated_hhmm,day_accumulated_days,day_target_hhmm,day_deviation_hhmm,day_deviation_days,pending_for_jira_submission");
 
         IEnumerable<TimeEntry> orderedEntries = oldestFirst
             ? entries.OrderBy(e => e.Date).ThenBy(e => e.StartTime)
@@ -17,7 +17,7 @@ public class CsvExportService
 
         foreach (var entry in orderedEntries)
         {
-            sb.AppendLine($"{entry.Date},{entry.StartTime},{entry.Type},{EscapeCsv(entry.Ticket)},{EscapeCsv(entry.Description)},{entry.Duration},{entry.DayAccumulatedHhmm},{entry.DayAccumulatedDays},{entry.DayTargetHhmm},{entry.DayDeviationHhmm},{entry.DayDeviationDays},{entry.SubmittedToJira}");
+            sb.AppendLine($"{entry.Date},{entry.StartTime},{entry.Type},{EscapeCsv(entry.Ticket)},{EscapeCsv(entry.Description)},{entry.Duration},{entry.DayAccumulatedHhmm},{entry.DayAccumulatedDays},{entry.DayTargetHhmm},{entry.DayDeviationHhmm},{entry.DayDeviationDays},{entry.PendingForJiraSubmission}");
         }
 
         return sb.ToString();
@@ -49,7 +49,7 @@ public class CsvExportService
                 DayTargetHhmm = parts[8],
                 DayDeviationHhmm = parts[9],
                 DayDeviationDays = string.IsNullOrEmpty(parts[10]) ? null : double.Parse(parts[10]),
-                SubmittedToJira = bool.Parse(parts[11])
+                PendingForJiraSubmission = bool.Parse(parts[11])
             };
 
             entries.Add(entry);

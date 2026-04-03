@@ -14,5 +14,5 @@ public class TimeEntry
     public string DayTargetHhmm { get; set; } = "08:00";
     public string? DayDeviationHhmm { get; set; }
     public double? DayDeviationDays { get; set; }
-    public bool SubmittedToJira { get; set; }
+    public bool PendingForJiraSubmission { get; set; }
 }

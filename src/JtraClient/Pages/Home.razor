@@ -79,7 +79,14 @@
                 <div class="entry-description">@entry.Description</div>
                 <div class="entry-duration">@FormatTime(entry.Duration)</div>
                 <div class="entry-actions" style="display: flex; justify-content: center; align-items: center;">
-                    <input type="checkbox" @bind="entry.SubmittedToJira" @bind:event="oninput" @onclick:stopPropagation="true" @onchange="() => SaveSubmitted(entry)" />
+                    @if (IsJiraSubmittable(entry))
+                    {
+                        <input type="checkbox" @bind="entry.PendingForJiraSubmission" @bind:event="oninput" @onclick:stopPropagation="true" @onchange="() => SavePending(entry)" title="Checked means this entry will be included in the next bulk JIRA submission." />
+                    }
+                    else
+                    {
+                        <span title="This entry has no ticket and cannot be submitted to JIRA">-</span>
+                    }
                 </div>
             </div>
         }
@@ -101,6 +108,7 @@ else
     [Inject] private CsvExportService CsvExport { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private HttpClient Http { get; set; } = default!;
+    [Inject] private ILogger<Home> Logger { get; set; } = default!;
 
     private bool showEditDialog = false;
     private bool showDataMenu = false;
@@ -160,7 +168,7 @@ else
             DayTargetHhmm = entry.DayTargetHhmm,
             DayDeviationHhmm = entry.DayDeviationHhmm,
             DayDeviationDays = entry.DayDeviationDays,
-            SubmittedToJira = entry.SubmittedToJira
+            PendingForJiraSubmission = entry.PendingForJiraSubmission
         };
         showEditDialog = true;
     }
@@ -171,8 +179,10 @@ else
         showEditDialog = false;
     }
 
-    private async Task SaveSubmitted(TimeEntry entry)
+    private async Task SavePending(TimeEntry entry)
     {
+        await DebugLogAsync(
+            $"SavePending invoked. id={entry.Id}, date={entry.Date}, type={entry.Type}, ticket='{entry.Ticket}', duration='{entry.Duration}', pending={entry.PendingForJiraSubmission}");
         await AppState.UpdateEntryAsync(entry);
     }
 
@@ -228,19 +238,61 @@ else
     {
         showDataMenu = false;
 
+        await DebugLogAsync($"SubmitPendingTasks started. totalEntries={AppState.AllEntries.Count}, selectedDate={selectedDate:yyyy-MM-dd}");
+
+        Logger.LogInformation(
+            "SubmitPendingTasks started. totalEntries={TotalEntries}, selectedDate={SelectedDate}",
+            AppState.AllEntries.Count,
+            selectedDate.ToString("yyyy-MM-dd"));
+        await DebugLogAsync($"All entries snapshot: {DescribeEntries(AppState.AllEntries)}");
+        await DebugLogAsync($"Displayed entries snapshot: {DescribeEntries(DisplayedEntries)}");
+
         if (string.IsNullOrEmpty(AppState.Settings.JiraBaseUrl) || string.IsNullOrEmpty(AppState.Settings.Pat))
         {
+            await DebugLogAsync("SubmitPendingTasks aborted: JiraBaseUrl or PAT missing.");
+            Logger.LogWarning("SubmitPendingTasks aborted because JiraBaseUrl or PAT is missing.");
             await JS.InvokeVoidAsync("alert", "Please configure JIRA URL and PAT in Settings first.");
             return;
         }
 
-        var pendingEntries = AppState.AllEntries
-            .Where(e => !e.SubmittedToJira && !string.IsNullOrEmpty(e.Ticket) && !string.IsNullOrEmpty(e.Duration))
+        var selectedPendingEntries = AppState.AllEntries
+            .Where(e => e.PendingForJiraSubmission)
             .ToList();
+
+        Logger.LogInformation(
+            "Selected pending entries found: {Count}. Sample: {Sample}",
+            selectedPendingEntries.Count,
+            string.Join(" | ", selectedPendingEntries.Take(5).Select(e =>
+                $"id={e.Id},date={e.Date},type={e.Type},ticket='{e.Ticket}',duration='{e.Duration}',pending={e.PendingForJiraSubmission}")));
+        await DebugLogAsync($"Selected pending entries count={selectedPendingEntries.Count}");
+
+        var pendingEntries = AppState.AllEntries
+            .Where(e => e.PendingForJiraSubmission && IsJiraSubmittable(e))
+            .ToList();
+
+        Logger.LogInformation(
+            "Pending entries selected for submission after ticket filter: {Count}. Sample: {Sample}",
+            pendingEntries.Count,
+            string.Join(" | ", pendingEntries.Take(5).Select(e =>
+                $"id={e.Id},date={e.Date},type={e.Type},ticket='{e.Ticket}',duration='{e.Duration}'")));
+        await DebugLogAsync($"Pending entries selected for submission after ticket filter count={pendingEntries.Count}");
 
         if (!pendingEntries.Any())
         {
-            await JS.InvokeVoidAsync("alert", "No pending entries to submit.");
+            var missingTicketCount = selectedPendingEntries.Count(e => string.IsNullOrWhiteSpace(e.Ticket));
+            Logger.LogWarning(
+                "No pending entries to submit. selectedPending={SelectedPending}, missingTicket={MissingTicket}",
+                selectedPendingEntries.Count,
+                missingTicketCount);
+            await DebugLogAsync($"No pending entries to submit. selectedPending={selectedPendingEntries.Count}, missingTicket={missingTicketCount}");
+            if (selectedPendingEntries.Any() && missingTicketCount == selectedPendingEntries.Count)
+            {
+                await JS.InvokeVoidAsync("alert", "No pending entries with a JIRA ticket to submit.");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", "No pending entries to submit.");
+            }
             return;
         }
 
@@ -254,6 +306,18 @@ else
             foreach (var group in grouped)
             {
                 var totalSeconds = group.Entries.Sum(e => ParseDurationToSeconds(e.Duration ?? "00:00"));
+                if (totalSeconds <= 0)
+                {
+                    await DebugLogAsync($"Skipping group with zero duration. ticket={group.Ticket}, entries={group.Entries.Count}");
+                    Logger.LogWarning(
+                        "Skipping group due to zero duration. ticket={Ticket}, entries={Entries}",
+                        group.Ticket,
+                        string.Join(" | ", group.Entries.Select(e =>
+                            $"id={e.Id},date={e.Date},start={e.StartTime},duration='{e.Duration}',desc='{e.Description}'")));
+                    failCount++;
+                    continue;
+                }
+
                 var firstEntry = group.Entries.First();
 
                 var worklog = new
@@ -265,6 +329,14 @@ else
 
                 try
                 {
+                    Logger.LogInformation(
+                        "Submitting worklog. ticket={Ticket}, totalSeconds={TotalSeconds}, started={Started}, entriesInGroup={EntriesInGroup}",
+                        group.Ticket,
+                        totalSeconds,
+                        worklog.started,
+                        group.Entries.Count);
+                    await DebugLogAsync($"Submitting worklog. ticket={group.Ticket}, totalSeconds={totalSeconds}, started={worklog.started}, entries={group.Entries.Count}");
+
                     var request = new HttpRequestMessage(HttpMethod.Post, $"/api/jira/issue/{group.Ticket}/worklog");
                     request.Headers.Add("X-Jira-Base-Url", AppState.Settings.JiraBaseUrl);
                     request.Headers.Add("X-Jira-Pat", AppState.Settings.Pat);
@@ -274,31 +346,50 @@ else
 
                     if (response.IsSuccessStatusCode)
                     {
+                        await DebugLogAsync($"Worklog submit succeeded. ticket={group.Ticket}");
+                        Logger.LogInformation("Worklog submit succeeded. ticket={Ticket}", group.Ticket);
                         foreach (var entry in group.Entries)
                         {
-                            entry.SubmittedToJira = true;
+                            entry.PendingForJiraSubmission = false;
                             await IndexedDb.UpdateTimeEntryAsync(entry);
                         }
                         successCount++;
                     }
                     else
                     {
+                        var errorBody = await response.Content.ReadAsStringAsync();
+                        await DebugLogAsync($"Worklog submit failed. ticket={group.Ticket}, status={(int)response.StatusCode}, body={errorBody}");
+                        Logger.LogWarning(
+                            "Worklog submit failed. ticket={Ticket}, status={StatusCode}, body={Body}",
+                            group.Ticket,
+                            (int)response.StatusCode,
+                            errorBody);
                         failCount++;
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
+                    await DebugLogAsync($"Worklog submit exception. ticket={group.Ticket}, ex={ex.Message}");
+                    Logger.LogError(ex, "Worklog submit threw exception. ticket={Ticket}", group.Ticket);
                     failCount++;
                 }
             }
 
             await AppState.RefreshEntriesAsync();
+            Logger.LogInformation("SubmitPendingTasks finished. success={SuccessCount}, failed={FailCount}", successCount, failCount);
+            await DebugLogAsync($"SubmitPendingTasks finished. success={successCount}, failed={failCount}");
             await JS.InvokeVoidAsync("alert", $"Submitted {successCount} worklogs. Failed: {failCount}");
         }
         finally
         {
             submitting = false;
         }
+    }
+
+    private ValueTask DebugLogAsync(string message)
+    {
+        Logger.LogInformation("[SubmitPendingTasks] {Message}", message);
+        return JS.InvokeVoidAsync("console.log", $"[JTRA] {message}");
     }
 
     private List<(string Ticket, List<TimeEntry> Entries)> GroupEntries(List<TimeEntry> entries)
@@ -345,6 +436,23 @@ else
             return (int)ts.TotalSeconds;
         }
         return 0;
+    }
+
+    private static bool IsJiraSubmittable(TimeEntry entry)
+    {
+        return !string.IsNullOrWhiteSpace(entry.Ticket);
+    }
+
+    private static string DescribeEntries(IEnumerable<TimeEntry> entries)
+    {
+        var list = entries
+            .OrderBy(e => e.Date)
+            .ThenBy(e => e.StartTime)
+            .Select(e =>
+                $"id={e.Id},date={e.Date},start={e.StartTime},type={e.Type},ticket='{e.Ticket}',duration='{e.Duration}',pending={e.PendingForJiraSubmission}")
+            .ToList();
+
+        return list.Count == 0 ? "<none>" : string.Join(" || ", list);
     }
 
     private static string FormatTime(string? time)
