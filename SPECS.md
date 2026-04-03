@@ -542,6 +542,28 @@ Content-Type: application/json
 - JIRA REST API v2 is used (supported on both JIRA Server/Data Center and JIRA Cloud)
 - Base URL is fully configurable (e.g. `https://jira.yourcompany.com`)
 
+### ⚠️ IMPORTANT: CORS Proxy Requirement
+
+**ALL JIRA API calls MUST be proxied through the server.** Blazor WebAssembly (client-side) cannot make direct HTTP requests to JIRA because:
+
+1. **CORS Policy Restriction**: Browsers enforce Same-Origin Policy; direct cross-origin requests to JIRA fail with "CORS header 'Access-Control-Allow-Origin' missing"
+2. **Architectural Constraint**: The Blazor client in the browser cannot bypass CORS
+
+**Correct Architecture**:
+- **Client** → calls `/api/jira/...` endpoints on the local server
+- **Server** → proxies the request to JIRA with credentials (server-to-server communication has no CORS restrictions)
+- **Server** → parses the JSON response and returns data to client
+- **Client** → displays parsed data to user
+
+**Implementation**:
+- Server endpoints in `JtraServer/Controllers/JiraController.cs`:
+  - `GET /api/jira/issue/{key}/summary` — fetches and caches ticket summary
+  - `POST /api/jira/issue/{key}/worklog` — submits time entry to JIRA
+- Client sends JIRA credentials via request headers: `X-Jira-Base-Url`, `X-Jira-Pat`
+- Server includes `Authorization: Bearer {PAT}` when calling JIRA REST API
+
+**If you attempt direct JIRA calls from the client, you will encounter CORS errors. Do not implement workarounds; route through the server proxy instead.**
+
 ---
 
 ## 6. Data Flow
