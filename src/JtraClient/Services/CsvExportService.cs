@@ -5,11 +5,11 @@ namespace JtraClient.Services;
 
 public class CsvExportService
 {
-    public string ExportToCsv(List<TimeEntry> entries, bool oldestFirst = true)
+    public string ExportToCsv(List<TimeEntry> entries, List<TaskEntry> taskEntries, bool oldestFirst = true)
     {
         var sb = new StringBuilder();
         
-        sb.AppendLine("date,start_time,type,ticket,description,duration,day_accumulated_hhmm,day_accumulated_days,day_target_hhmm,day_deviation_hhmm,day_deviation_days,pending_for_jira_submission");
+        sb.AppendLine("date,start_time,category,sub_category,ticket,description,day_accumulated_hhmm,day_accumulated_days,day_target_hhmm,day_deviation_hhmm,day_deviation_days,pending_for_jira_submission");
 
         IEnumerable<TimeEntry> orderedEntries = oldestFirst
             ? entries.OrderBy(e => e.Date).ThenBy(e => e.StartTime)
@@ -17,7 +17,8 @@ public class CsvExportService
 
         foreach (var entry in orderedEntries)
         {
-            sb.AppendLine($"{entry.Date},{entry.StartTime},{entry.Type},{EscapeCsv(entry.Ticket)},{EscapeCsv(entry.Description)},{entry.Duration},{entry.DayAccumulatedHhmm},{entry.DayAccumulatedDays},{entry.DayTargetHhmm},{entry.DayDeviationHhmm},{entry.DayDeviationDays},{entry.PendingForJiraSubmission}");
+            var (category, subcategory) = ResolveLabels(entry, taskEntries);
+            sb.AppendLine($"{entry.Date},{entry.StartTime},{EscapeCsv(category)},{EscapeCsv(subcategory)},{EscapeCsv(entry.Ticket)},{EscapeCsv(entry.Description)},{entry.DayAccumulatedHhmm},{entry.DayAccumulatedDays},{entry.DayTargetHhmm},{entry.DayDeviationHhmm},{entry.DayDeviationDays},{entry.PendingForJiraSubmission}");
         }
 
         return sb.ToString();
@@ -27,6 +28,17 @@ public class CsvExportService
     {
         var entries = new List<TimeEntry>();
         var lines = csvContent.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        if (lines.Length == 0)
+        {
+            return entries;
+        }
+
+        var header = lines[0].Trim();
+        if (!header.Equals("date,start_time,category,sub_category,ticket,description,day_accumulated_hhmm,day_accumulated_days,day_target_hhmm,day_deviation_hhmm,day_deviation_days,pending_for_jira_submission", StringComparison.OrdinalIgnoreCase))
+        {
+            return entries;
+        }
         
         for (int i = 1; i < lines.Length; i++)
         {
@@ -40,10 +52,9 @@ public class CsvExportService
             {
                 Date = parts[0],
                 StartTime = parts[1],
-                Type = Enum.Parse<TaskType>(parts[2]),
-                Ticket = parts[3],
-                Description = parts[4],
-                Duration = parts[5],
+                Type = ParseTypeFromCategory(parts[2]),
+                Ticket = parts[4],
+                Description = parts[5],
                 DayAccumulatedHhmm = parts[6],
                 DayAccumulatedDays = string.IsNullOrEmpty(parts[7]) ? null : double.Parse(parts[7]),
                 DayTargetHhmm = parts[8],
@@ -56,6 +67,30 @@ public class CsvExportService
         }
 
         return entries;
+    }
+
+    private static TaskType ParseTypeFromCategory(string category)
+    {
+        if (Enum.TryParse<TaskType>(category, true, out var parsedType))
+        {
+            return parsedType;
+        }
+
+        return TaskType.Ticket;
+    }
+
+    private static (string Category, string Subcategory) ResolveLabels(TimeEntry entry, IEnumerable<TaskEntry> taskEntries)
+    {
+        if (entry.Type == TaskType.Break)
+        {
+            return ("Break", string.Empty);
+        }
+
+        var task = taskEntries.FirstOrDefault(t =>
+            string.Equals(t.Ticket ?? string.Empty, entry.Ticket ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(t.Description ?? string.Empty, entry.Description ?? string.Empty, StringComparison.Ordinal));
+
+        return (task?.Category ?? entry.Type.ToString(), task?.Subcategory ?? string.Empty);
     }
 
     public string ExportTasksToCsv(List<TaskEntry> entries)

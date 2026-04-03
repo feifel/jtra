@@ -117,7 +117,7 @@
         window.indexedDbInterop = {
             db: null,
             dbName: 'JtraDb',
-            dbVersion: 2,
+            dbVersion: 3,
 
             init: function() {
                 return new Promise((resolve, reject) => {
@@ -154,6 +154,28 @@
                             const taskStore = db.createObjectStore('task_entries', { keyPath: 'id', autoIncrement: true });
                             taskStore.createIndex('category', 'category', { unique: false });
                             taskStore.createIndex('subcategory', 'subcategory', { unique: false });
+                        }
+
+                        // Migration: remove legacy persisted `duration` from existing time entries.
+                        if (event.oldVersion < 3 && db.objectStoreNames.contains('time_entries')) {
+                            const transaction = event.target.transaction;
+                            const entriesStore = transaction.objectStore('time_entries');
+                            const cursorRequest = entriesStore.openCursor();
+
+                            cursorRequest.onsuccess = (cursorEvent) => {
+                                const cursor = cursorEvent.target.result;
+                                if (!cursor) {
+                                    return;
+                                }
+
+                                const value = cursor.value;
+                                if (value && Object.prototype.hasOwnProperty.call(value, 'duration')) {
+                                    delete value.duration;
+                                    cursor.update(value);
+                                }
+
+                                cursor.continue();
+                            };
                         }
                     };
                 });

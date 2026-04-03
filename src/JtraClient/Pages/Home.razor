@@ -71,16 +71,17 @@
             <div class="entry-duration">Duration</div>
             <div class="entry-actions" style="text-align: center;">Pending</div>
         </div>
-        @foreach (var entry in DisplayedEntries.OrderByDescending(e => e.StartTime))
+        @foreach (var entry in DisplayedEntries.OrderByDescending(e => DurationCalculator.GetStartMinutesOrMax(e.StartTime)).ThenByDescending(e => e.StartTime).ThenByDescending(e => e.Id))
         {
             var (entryCategory, entrySubcategory) = GetEntryLabels(entry);
+            var calculatedDuration = DurationCalculator.FormatMinutes(DurationCalculator.CalculateDurationMinutes(DisplayedEntries, entry));
             <div class="entry-row" @ondblclick="() => StartEdit(entry)">
                 <div class="entry-time">@FormatTime(entry.StartTime)</div>
                 <div class="entry-category">@entryCategory</div>
                 <div class="entry-subcategory">@entrySubcategory</div>
                 <div class="entry-ticket">@entry.Ticket</div>
                 <div class="entry-description">@entry.Description</div>
-                <div class="entry-duration">@FormatTime(entry.Duration)</div>
+                <div class="entry-duration">@calculatedDuration</div>
                 <div class="entry-actions" style="display: flex; justify-content: center; align-items: center;">
                     @if (IsJiraSubmittable(entry))
                     {
@@ -172,7 +173,6 @@ else
             Type = entry.Type,
             Ticket = entry.Ticket,
             Description = entry.Description,
-            Duration = entry.Duration,
             DayAccumulatedHhmm = entry.DayAccumulatedHhmm,
             DayAccumulatedDays = entry.DayAccumulatedDays,
             DayTargetHhmm = entry.DayTargetHhmm,
@@ -193,7 +193,7 @@ else
     private async Task SavePending(TimeEntry entry)
     {
         await DebugLogAsync(
-            $"SavePending invoked. id={entry.Id}, date={entry.Date}, type={entry.Type}, ticket='{entry.Ticket}', duration='{entry.Duration}', pending={entry.PendingForJiraSubmission}");
+            $"SavePending invoked. id={entry.Id}, date={entry.Date}, type={entry.Type}, ticket='{entry.Ticket}', pending={entry.PendingForJiraSubmission}");
         await AppState.UpdateEntryAsync(entry);
     }
 
@@ -232,7 +232,8 @@ else
         
         var latest = AppState.AllEntries
             .Where(e => e.Date == today)
-            .OrderByDescending(e => e.StartTime)
+            .OrderByDescending(e => DurationCalculator.GetStartMinutesOrMax(e.StartTime))
+            .ThenByDescending(e => e.StartTime)
             .ThenByDescending(e => e.Id)
             .FirstOrDefault();
         
@@ -247,7 +248,7 @@ else
     private async Task ExportData()
     {
         showDataMenu = false;
-        var csv = CsvExport.ExportToCsv(AppState.AllEntries, AppState.Settings.CsvExportOldestFirst);
+        var csv = CsvExport.ExportToCsv(AppState.AllEntries, AppState.AllTaskEntries, AppState.Settings.CsvExportOldestFirst);
         var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
         var base64 = Convert.ToBase64String(bytes);
         await JS.InvokeVoidAsync("downloadFile", $"jtra-export-{DateTime.Today:yyyy-MM-dd}.csv", "text/csv", base64);
@@ -305,7 +306,7 @@ else
             "Selected pending entries found: {Count}. Sample: {Sample}",
             selectedPendingEntries.Count,
             string.Join(" | ", selectedPendingEntries.Take(5).Select(e =>
-                $"id={e.Id},date={e.Date},type={e.Type},ticket='{e.Ticket}',duration='{e.Duration}',pending={e.PendingForJiraSubmission}")));
+                $"id={e.Id},date={e.Date},type={e.Type},ticket='{e.Ticket}',pending={e.PendingForJiraSubmission}")));
         await DebugLogAsync($"Selected pending entries count={selectedPendingEntries.Count}");
 
         var pendingEntries = AppState.AllEntries
@@ -316,7 +317,7 @@ else
             "Pending entries selected for submission after ticket filter: {Count}. Sample: {Sample}",
             pendingEntries.Count,
             string.Join(" | ", pendingEntries.Take(5).Select(e =>
-                $"id={e.Id},date={e.Date},type={e.Type},ticket='{e.Ticket}',duration='{e.Duration}'")));
+                $"id={e.Id},date={e.Date},type={e.Type},ticket='{e.Ticket}'")));
         await DebugLogAsync($"Pending entries selected for submission after ticket filter count={pendingEntries.Count}");
 
         if (!pendingEntries.Any())
@@ -347,7 +348,7 @@ else
 
             foreach (var group in grouped)
             {
-                var totalSeconds = group.Entries.Sum(e => ParseDurationToSeconds(e.Duration ?? "00:00"));
+                var totalSeconds = group.Entries.Sum(e => DurationCalculator.CalculateDurationMinutes(AppState.AllEntries, e) * 60);
                 if (totalSeconds <= 0)
                 {
                     await DebugLogAsync($"Skipping group with zero duration. ticket={group.Ticket}, entries={group.Entries.Count}");
@@ -355,7 +356,7 @@ else
                         "Skipping group due to zero duration. ticket={Ticket}, entries={Entries}",
                         group.Ticket,
                         string.Join(" | ", group.Entries.Select(e =>
-                            $"id={e.Id},date={e.Date},start={e.StartTime},duration='{e.Duration}',desc='{e.Description}'")));
+                            $"id={e.Id},date={e.Date},start={e.StartTime},desc='{e.Description}'")));
                     failCount++;
                     continue;
                 }
@@ -471,15 +472,6 @@ else
         return result;
     }
 
-    private static int ParseDurationToSeconds(string duration)
-    {
-        if (TimeSpan.TryParse(duration, out var ts))
-        {
-            return (int)ts.TotalSeconds;
-        }
-        return 0;
-    }
-
     private static bool IsJiraSubmittable(TimeEntry entry)
     {
         return !string.IsNullOrWhiteSpace(entry.Ticket);
@@ -501,7 +493,7 @@ else
             .OrderBy(e => e.Date)
             .ThenBy(e => e.StartTime)
             .Select(e =>
-                $"id={e.Id},date={e.Date},start={e.StartTime},type={e.Type},ticket='{e.Ticket}',duration='{e.Duration}',pending={e.PendingForJiraSubmission}")
+                $"id={e.Id},date={e.Date},start={e.StartTime},type={e.Type},ticket='{e.Ticket}',pending={e.PendingForJiraSubmission}")
             .ToList();
 
         return list.Count == 0 ? "<none>" : string.Join(" || ", list);
@@ -515,4 +507,5 @@ else
             return $"{parts[0]}:{parts[1]}";
         return time;
     }
+
 }

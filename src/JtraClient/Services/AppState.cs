@@ -200,17 +200,6 @@ public class AppState
     {
         if (CurrentTask == null || string.IsNullOrEmpty(CurrentTask.StartTime)) return;
 
-        var startTime = DateTime.ParseExact(CurrentTask.StartTime, "HH:mm", null);
-        var end = DateTime.ParseExact(endTime, "HH:mm", null);
-        
-        if (end < startTime)
-        {
-            end = end.AddDays(1);
-        }
-
-        var duration = end - startTime;
-        CurrentTask.Duration = FormatDuration(duration);
-
         RecalculateTodayStats();
         
         await _indexedDb.UpdateTimeEntryAsync(CurrentTask);
@@ -419,13 +408,33 @@ public class AppState
     private void RecalculateTodayStats()
     {
         TodayAccumulated = TimeSpan.Zero;
-        
-        foreach (var entry in TodayEntries.Where(e => e.Type != TaskType.Break && !string.IsNullOrEmpty(e.Duration)))
+
+        var orderedTodayEntries = TodayEntries
+            .OrderBy(e => DurationCalculator.GetStartMinutesOrMax(e.StartTime))
+            .ThenBy(e => e.StartTime)
+            .ThenBy(e => e.Id)
+            .ToList();
+
+        var accumulatedMinutes = 0;
+
+        for (int i = 0; i < orderedTodayEntries.Count; i++)
         {
-            if (TimeSpan.TryParse(entry.Duration, out var duration))
+            var entry = orderedTodayEntries[i];
+            if (entry.Type == TaskType.Break)
             {
-                TodayAccumulated += duration;
+                continue;
             }
+
+            accumulatedMinutes += DurationCalculator.CalculateDurationMinutes(orderedTodayEntries, i);
+        }
+
+        if (TimeSpan.TryParse($"{accumulatedMinutes / 60:D2}:{accumulatedMinutes % 60:D2}", out var accumulatedSpan))
+        {
+            TodayAccumulated = accumulatedSpan;
+        }
+        else
+        {
+            TodayAccumulated = TimeSpan.Zero;
         }
 
         if (TimeSpan.TryParse(Settings.DefaultTargetHours, out var target))
@@ -437,63 +446,54 @@ public class AppState
     private async Task RecalculateAllEntriesAsync()
     {
         var groupedByDate = AllEntries.GroupBy(e => e.Date).OrderBy(g => g.Key);
-        var today = DateTime.Today.ToString("yyyy-MM-dd");
-        var now = DateTime.Now;
         var updatedEntries = new List<TimeEntry>();
         
         foreach (var group in groupedByDate)
         {
-            var entries = group.OrderBy(e => e.StartTime).ToList();
-            TimeSpan accumulated = TimeSpan.Zero;
+            var entries = group
+                .OrderBy(e => DurationCalculator.GetStartMinutesOrMax(e.StartTime))
+                .ThenBy(e => e.StartTime)
+                .ThenBy(e => e.Id)
+                .ToList();
+            var accumulatedMinutes = 0;
             
             for (int i = 0; i < entries.Count; i++)
             {
                 var entry = entries[i];
-                
-                var startTime = ParseTime(entry.StartTime);
-                DateTime endTime;
-                
-                if (entry == CurrentTask)
+
+                if (entry.Type != TaskType.Break)
                 {
-                    endTime = startTime;
+                    accumulatedMinutes += DurationCalculator.CalculateDurationMinutes(entries, i);
                 }
-                else if (i < entries.Count - 1)
-                {
-                    endTime = ParseTime(entries[i + 1].StartTime);
-                    if (endTime <= startTime)
-                    {
-                        endTime = endTime.AddDays(1);
-                    }
-                }
-                else
-                {
-                    endTime = startTime;
-                }
-                
-                var duration = endTime - startTime;
-                var newDuration = duration > TimeSpan.Zero ? FormatDuration(duration) : "";
-                if (entry.Duration != newDuration)
-                {
-                    entry.Duration = newDuration;
-                    updatedEntries.Add(entry);
-                }
-                
-                if (entry.Type != TaskType.Break && !string.IsNullOrEmpty(entry.Duration))
-                {
-                    if (TimeSpan.TryParse(entry.Duration, out var dur))
-                    {
-                        accumulated += dur;
-                    }
-                }
-                
-                entry.DayAccumulatedHhmm = FormatDuration(accumulated);
-                entry.DayAccumulatedDays = accumulated.TotalHours / 8.0;
-                
+
+                var newAccumulatedHhmm = FormatDurationFromMinutes(accumulatedMinutes);
+                var newAccumulatedDays = accumulatedMinutes / 480.0;
+
+                var changed = !string.Equals(entry.DayAccumulatedHhmm, newAccumulatedHhmm, StringComparison.Ordinal)
+                    || entry.DayAccumulatedDays != newAccumulatedDays;
+
+                entry.DayAccumulatedHhmm = newAccumulatedHhmm;
+                entry.DayAccumulatedDays = newAccumulatedDays;
+
                 if (TimeSpan.TryParse(entry.DayTargetHhmm, out var target))
                 {
-                    var deviation = accumulated - target;
-                    entry.DayDeviationHhmm = FormatDuration(deviation);
-                    entry.DayDeviationDays = deviation.TotalHours / 8.0;
+                    var deviationMinutes = accumulatedMinutes - (int)target.TotalMinutes;
+                    var newDeviationHhmm = FormatDurationFromMinutes(deviationMinutes);
+                    var newDeviationDays = deviationMinutes / 480.0;
+
+                    if (!string.Equals(entry.DayDeviationHhmm, newDeviationHhmm, StringComparison.Ordinal)
+                        || entry.DayDeviationDays != newDeviationDays)
+                    {
+                        changed = true;
+                    }
+
+                    entry.DayDeviationHhmm = newDeviationHhmm;
+                    entry.DayDeviationDays = newDeviationDays;
+                }
+
+                if (changed)
+                {
+                    updatedEntries.Add(entry);
                 }
             }
         }
@@ -524,20 +524,11 @@ public class AppState
         return $"{(int)Math.Floor(duration.TotalHours):D2}:{duration.Minutes:D2}";
     }
 
-    private static DateTime ParseTime(string time)
+    private static string FormatDurationFromMinutes(int totalMinutes)
     {
-        if (string.IsNullOrEmpty(time)) return DateTime.Today;
-        var parts = time.Split(':');
-        if (parts.Length >= 2)
-        {
-            if (int.TryParse(parts[0], out var hours) && int.TryParse(parts[1], out var minutes))
-            {
-                hours = Math.Clamp(hours, 0, 23);
-                minutes = Math.Clamp(minutes, 0, 59);
-                return DateTime.Today.AddHours(hours).AddMinutes(minutes);
-            }
-        }
-        return DateTime.Today;
+        var sign = totalMinutes < 0 ? "-" : string.Empty;
+        var absoluteMinutes = Math.Abs(totalMinutes);
+        return $"{sign}{absoluteMinutes / 60:D2}:{absoluteMinutes % 60:D2}";
     }
 
     private async Task UpdateTicketCacheAsync(string ticketKey)
