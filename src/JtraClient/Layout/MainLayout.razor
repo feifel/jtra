@@ -8,7 +8,7 @@
 
     <main>
         <div class="top-row px-4">
-            <span class="next-checkin">Next check-in: @AppState.NextCheckInTime</span>
+            <span class="next-checkin">Next check-in: @FormatNextCheckIn()</span>
             <span class="ms-3">Server: @(AppState.IsConnectedToServer ? "connected" : "disconnected")</span>
             <span class="ms-3">Last tick: @FormatDiagnostic(AppState.LastServerTickReceivedAt, AppState.LastServerTickTime)</span>
             <span class="ms-3">Notification: @FormatNotificationDiagnostic()</span>
@@ -22,7 +22,12 @@
 
 @if (ShowCheckInPopup)
 {
-    <EditEntryDialog Entry="checkInEntry" OnSave="HandleCheckInSave" OnDelete="HandleCheckInDelete" OnClose="HandleCancelCheckIn" />
+    <EditEntryDialog Entry="checkInEntry"
+                     OnSave="HandleCheckInSave"
+                     OnDelete="HandleCheckInDelete"
+                     OnClose="HandleCancelCheckIn"
+                     OnEstimatedEndSelected="HandleEstimatedEndSelected"
+                     ShowEstimatedEndOption="true" />
 }
 
 @code {
@@ -71,7 +76,7 @@
 
     private async Task ShowCheckInNotification()
     {
-        await NotificationService.ShowNotificationAsync("JTRA Check-in", "Time to record your current task!");
+        await NotificationService.ShowNotificationAsync("JTRA Worklog", "Do you want to log a new Task?");
     }
 
     private async Task HandleCheckInSave(TimeEntry entry)
@@ -82,6 +87,14 @@
     private Task HandleCheckInDelete(int id)
     {
         return Task.CompletedTask;
+    }
+
+    private async Task HandleEstimatedEndSelected(DateTime? estimatedEnd)
+    {
+        if (estimatedEnd.HasValue)
+        {
+            await AppState.SetSnooze(estimatedEnd.Value);
+        }
     }
 
     private Task HandleCancelCheckIn()
@@ -140,5 +153,12 @@
         }
 
         return $"{AppState.LastNotificationStatus} at {AppState.LastNotificationAttemptAt.Value:HH:mm:ss}";
+    }
+
+    private string FormatNextCheckIn()
+    {
+        return AppState.NextCheckInTime.HasValue
+            ? AppState.NextCheckInTime.Value.ToString("yyyy-MM-dd HH:mm")
+            : "n/a";
     }
 }

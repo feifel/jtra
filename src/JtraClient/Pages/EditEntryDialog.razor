@@ -12,13 +12,26 @@
 
         <div class="form-group">
             <label>Start Time</label>
-            <select @bind="entryStartTime" class="form-control" @onkeydown="HandleKeyDown">
+            <select value="@entryStartTime" @onchange="HandleStartTimeChanged" class="form-control" @onkeydown="HandleKeyDown">
                 @foreach (var t in timeOptions)
                 {
                     <option value="@t">@t</option>
                 }
             </select>
         </div>
+
+        @if (ShowEstimatedEndOption)
+        {
+            <div class="form-group">
+                <label>Estimated End</label>
+                <select @bind="selectedEstimatedEndTime" class="form-control" @onkeydown="HandleKeyDown">
+                    @foreach (var t in timeOptions)
+                    {
+                        <option value="@t">@t</option>
+                    }
+                </select>
+            </div>
+        }
 
         <div class="form-group">
             <label>Task Type</label>
@@ -46,16 +59,6 @@
         <div class="form-group">
             <label>Description</label>
             <input type="text" @bind="Entry.Description" @bind:event="oninput" class="form-control" maxlength="100" @onkeydown="HandleKeyDown" />
-        </div>
-
-        <div class="form-group">
-            <label>Target Hours</label>
-            <select @bind="entryTargetHours" class="form-control" @onkeydown="HandleKeyDown">
-                @foreach (var t in targetHourOptions)
-                {
-                    <option value="@t">@t</option>
-                }
-            </select>
         </div>
 
         <div class="popup-actions">
@@ -103,15 +106,18 @@
     [Parameter] public EventCallback<TimeEntry> OnSave { get; set; }
     [Parameter] public EventCallback<int> OnDelete { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<DateTime?> OnEstimatedEndSelected { get; set; }
+    [Parameter] public bool ShowEstimatedEndOption { get; set; }
 
     private string entryDate = DateTime.Today.ToString("yyyy-MM-dd");
     private string entryStartTime = "09:00";
-    private string entryTargetHours = "08:00";
     private List<string> timeOptions = new();
-    private List<string> targetHourOptions = new();
     private bool showTicketPicker;
     private List<TicketCache> favoriteTickets = new();
     private string selectedTaskSelection = CustomSelectionValue;
+    private string selectedEstimatedEndTime = "09:00";
+    private int? lastEntryId;
+    private bool lastShowEstimatedEndOption;
 
     private const string BreakSelectionValue = "__break__";
     private const string CustomSelectionValue = "__custom__";
@@ -119,15 +125,65 @@
     protected override void OnInitialized()
     {
         timeOptions = GenerateAllTimeOptions();
-        targetHourOptions = GenerateTargetHourOptions();
     }
 
     protected override void OnParametersSet()
     {
         entryDate = Entry.Date;
         entryStartTime = NormalizeTime(Entry.StartTime);
-        entryTargetHours = NormalizeTime(Entry.DayTargetHhmm);
         selectedTaskSelection = GetTaskSelectionForEntry();
+
+        if (lastEntryId != Entry.Id || lastShowEstimatedEndOption != ShowEstimatedEndOption)
+        {
+            selectedEstimatedEndTime = GetDefaultEstimatedEndTime();
+            lastEntryId = Entry.Id;
+            lastShowEstimatedEndOption = ShowEstimatedEndOption;
+
+            // If editing today's latest entry and we have a previously selected estimated end, restore it
+            if (ShowEstimatedEndOption && Entry.Date == DateTime.Today.ToString("yyyy-MM-dd") && 
+                AppState.LastSelectedEstimatedEnd.HasValue && 
+                AppState.LastSelectedEstimatedEnd.Value.Date == DateTime.Today)
+            {
+                selectedEstimatedEndTime = $"{AppState.LastSelectedEstimatedEnd.Value.Hour:D2}:{AppState.LastSelectedEstimatedEnd.Value.Minute:D2}";
+            }
+        }
+    }
+
+    private string GetDefaultEstimatedEndTime()
+    {
+        var interval = Math.Clamp(AppState.Settings.NotificationIntervalMinutes, 1, 60);
+        if (!TimeSpan.TryParse(entryStartTime, out var start))
+        {
+            start = DateTime.Now.TimeOfDay;
+        }
+
+        var estimated = DateTime.Today.Add(start).AddMinutes(interval);
+        var roundedMinute = ((estimated.Minute + 4) / 5) * 5;
+        if (roundedMinute == 60)
+        {
+            estimated = new DateTime(estimated.Year, estimated.Month, estimated.Day, estimated.Hour, 0, 0).AddHours(1);
+        }
+        else
+        {
+            estimated = new DateTime(estimated.Year, estimated.Month, estimated.Day, estimated.Hour, roundedMinute, 0);
+        }
+
+        if (estimated <= DateTime.Now)
+        {
+            estimated = estimated.AddDays(1);
+        }
+
+        return $"{estimated.Hour:D2}:{estimated.Minute:D2}";
+    }
+
+    private void HandleStartTimeChanged(ChangeEventArgs e)
+    {
+        entryStartTime = NormalizeTime(e.Value?.ToString() ?? entryStartTime);
+
+        if (ShowEstimatedEndOption)
+        {
+            selectedEstimatedEndTime = GetDefaultEstimatedEndTime();
+        }
     }
 
     private void HandleTaskSelectionChanged(ChangeEventArgs e)
@@ -188,8 +244,28 @@
     {
         Entry.Date = entryDate;
         Entry.StartTime = NormalizeTime(entryStartTime);
-        Entry.DayTargetHhmm = NormalizeTime(entryTargetHours);
         await OnSave.InvokeAsync(Entry);
+
+        if (ShowEstimatedEndOption)
+        {
+            await OnEstimatedEndSelected.InvokeAsync(ParseEstimatedEndDateTime());
+        }
+    }
+
+    private DateTime? ParseEstimatedEndDateTime()
+    {
+        if (!TimeSpan.TryParse(selectedEstimatedEndTime, out var selectedTime))
+        {
+            return null;
+        }
+
+        var estimatedEnd = DateTime.Today.Add(selectedTime);
+        if (estimatedEnd <= DateTime.Now)
+        {
+            estimatedEnd = estimatedEnd.AddDays(1);
+        }
+
+        return estimatedEnd >= DateTime.Now ? estimatedEnd : (DateTime?)null;
     }
 
     private static string NormalizeTime(string time)
@@ -242,17 +318,6 @@
             {
                 options.Add($"{h:D2}:{m:D2}");
             }
-        }
-        return options;
-    }
-
-    private static List<string> GenerateTargetHourOptions()
-    {
-        var options = new List<string>();
-        for (int h = 0; h <= 12; h++)
-        {
-            options.Add($"{h:D2}:00");
-            options.Add($"{h:D2}:30");
         }
         return options;
     }

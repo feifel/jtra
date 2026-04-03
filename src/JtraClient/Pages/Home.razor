@@ -102,7 +102,12 @@ else
 
 @if (showEditDialog && editingEntry != null)
 {
-    <EditEntryDialog Entry="editingEntry" OnSave="SaveEntry" OnDelete="DeleteEntry" OnClose="CloseEditDialog" />
+    <EditEntryDialog Entry="editingEntry"
+                     OnSave="SaveEntry"
+                     OnDelete="DeleteEntry"
+                     OnClose="CloseEditDialog"
+                     OnEstimatedEndSelected="HandleEstimatedEndSelected"
+                     ShowEstimatedEndOption="showEstimatedEndForEditingEntry" />
 }
 
 @code {
@@ -117,6 +122,7 @@ else
     private bool showDataMenu = false;
     private bool submitting = false;
     private TimeEntry? editingEntry;
+    private bool showEstimatedEndForEditingEntry;
     private DateTime selectedDate = DateTime.Today;
     private ElementReference fileInput;
 
@@ -157,6 +163,7 @@ else
 
     private void StartEdit(TimeEntry entry)
     {
+        showEstimatedEndForEditingEntry = IsLatestEntry(entry);
         editingEntry = new TimeEntry
         {
             Id = entry.Id,
@@ -180,6 +187,7 @@ else
     {
         await AppState.UpdateEntryAsync(entry);
         showEditDialog = false;
+        showEstimatedEndForEditingEntry = false;
     }
 
     private async Task SavePending(TimeEntry entry)
@@ -193,11 +201,42 @@ else
     {
         await AppState.DeleteEntryAsync(id);
         showEditDialog = false;
+        showEstimatedEndForEditingEntry = false;
     }
 
     private void CloseEditDialog()
     {
         showEditDialog = false;
+        showEstimatedEndForEditingEntry = false;
+    }
+
+    private async Task HandleEstimatedEndSelected(DateTime? estimatedEnd)
+    {
+        if (estimatedEnd.HasValue)
+        {
+            await AppState.SetSnooze(estimatedEnd.Value);
+        }
+        showEditDialog = false;
+        showEstimatedEndForEditingEntry = false;
+    }
+
+    private bool IsLatestEntry(TimeEntry entry)
+    {
+        var today = DateTime.Today.ToString("yyyy-MM-dd");
+        
+        // Only allow editing estimated end for today's entries
+        if (entry.Date != today)
+        {
+            return false;
+        }
+        
+        var latest = AppState.AllEntries
+            .Where(e => e.Date == today)
+            .OrderByDescending(e => e.StartTime)
+            .ThenByDescending(e => e.Id)
+            .FirstOrDefault();
+        
+        return latest != null && latest.Id == entry.Id;
     }
 
     private void ToggleDataMenu()

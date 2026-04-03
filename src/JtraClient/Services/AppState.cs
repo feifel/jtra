@@ -18,6 +18,7 @@ public class AppState
     public TimeEntry? CurrentTask { get; private set; }
     public DateTime? NextCheckInTime { get; private set; }
     public DateTime? SnoozedUntil { get; private set; }
+    public DateTime? LastSelectedEstimatedEnd { get; private set; }
     public bool ShowCheckInPopup { get; private set; }
     public bool IsConnectedToServer { get; private set; }
     public bool IsTimerTriggeredPopup { get; private set; }
@@ -218,6 +219,7 @@ public class AppState
     public async Task SetSnooze(DateTime snoozeUntil)
     {
         SnoozedUntil = snoozeUntil;
+        LastSelectedEstimatedEnd = snoozeUntil;
         ShowCheckInPopup = false;
         NextCheckInTime = snoozeUntil;
         NotifyStateChanged();
