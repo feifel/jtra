@@ -5,6 +5,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <StripSymbols>true</StripSymbols>
+    <PublishTrimmed>false</PublishTrimmed>
+    <WasmToolsPackageVersion>8.0.25</WasmToolsPackageVersion>
   </PropertyGroup>
 
   <ItemGroup>

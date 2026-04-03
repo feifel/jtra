@@ -238,10 +238,10 @@
         var options = new List<string>();
         for (int h = 0; h < 24; h++)
         {
-            options.Add($"{h:D2}:00");
-            options.Add($"{h:D2}:15");
-            options.Add($"{h:D2}:30");
-            options.Add($"{h:D2}:45");
+            for (int m = 0; m < 60; m += 5)
+            {
+                options.Add($"{h:D2}:{m:D2}");
+            }
         }
         return options;
     }

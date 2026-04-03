@@ -23,6 +23,17 @@
     </div>
 
     <div class="form-group">
+        <label>Check-in Interval</label>
+        <select @bind="settings.NotificationIntervalMinutes" class="form-control">
+            @foreach (var interval in GetNotificationIntervalOptions())
+            {
+                <option value="@interval">Every @interval minute@(interval == 1 ? string.Empty : "s")</option>
+            }
+        </select>
+        <small class="form-text text-muted">The server sends a heartbeat every minute. Your browser decides when to show the check-in popup.</small>
+    </div>
+
+    <div class="form-group">
         <label>Max Snooze Hours</label>
         <input type="number" @bind="settings.MaxSnoozeHours" class="form-control" min="1" max="8" />
     </div>
@@ -67,6 +78,7 @@
             JiraBaseUrl = AppState.Settings.JiraBaseUrl,
             Pat = AppState.Settings.Pat,
             DefaultTargetHours = AppState.Settings.DefaultTargetHours,
+            NotificationIntervalMinutes = AppState.Settings.NotificationIntervalMinutes,
             MaxSnoozeHours = AppState.Settings.MaxSnoozeHours,
             AutoConfirmBreakMinutes = AppState.Settings.AutoConfirmBreakMinutes,
             TicketCacheSize = AppState.Settings.TicketCacheSize,
@@ -94,5 +106,16 @@
     {
         settings = new AppSettings();
         defaultTargetHours = "08:00";
+    }
+
+    private IEnumerable<int> GetNotificationIntervalOptions()
+    {
+        yield return 1;
+        yield return 5;
+        yield return 10;
+        yield return 15;
+        yield return 20;
+        yield return 30;
+        yield return 60;
     }
 }

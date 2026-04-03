@@ -9,6 +9,9 @@
     <main>
         <div class="top-row px-4">
             <span class="next-checkin">Next check-in: @AppState.NextCheckInTime</span>
+            <span class="ms-3">Server: @(AppState.IsConnectedToServer ? "connected" : "disconnected")</span>
+            <span class="ms-3">Last tick: @FormatDiagnostic(AppState.LastServerTickReceivedAt, AppState.LastServerTickTime)</span>
+            <span class="ms-3">Notification: @FormatNotificationDiagnostic()</span>
         </div>
 
         <article class="content px-4">
@@ -59,10 +62,11 @@
 
         if (AppState.ShowCheckInPopup && !_lastPopupState && AppState.IsTimerTriggeredPopup)
         {
-            _ = ShowCheckInNotification();
+            _ = InvokeAsync(ShowCheckInNotification);
         }
+
         _lastPopupState = AppState.ShowCheckInPopup;
-        StateHasChanged();
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private async Task ShowCheckInNotification()
@@ -89,7 +93,7 @@
     private TimeEntry BuildCheckInEntry()
     {
         var now = DateTime.Now;
-        var rounded = RoundToNearestQuarter(now);
+        var rounded = RoundToNearestFiveMinutes(now);
 
         return new TimeEntry
         {
@@ -102,17 +106,39 @@
         };
     }
 
-    private static DateTime RoundToNearestQuarter(DateTime dt)
+    private static DateTime RoundToNearestFiveMinutes(DateTime dt)
     {
         var minute = dt.Minute;
-        var roundedMinute = (int)Math.Round(minute / 15.0) * 15;
+        var roundedMinute = (int)Math.Round(minute / 5.0) * 5;
         var rounded = new DateTime(dt.Year, dt.Month, dt.Day, dt.Hour, 0, 0).AddMinutes(roundedMinute);
 
         if (rounded.Day != dt.Day)
         {
-            rounded = new DateTime(dt.Year, dt.Month, dt.Day, 23, 45, 0);
+            rounded = new DateTime(dt.Year, dt.Month, dt.Day, 23, 55, 0);
         }
 
         return rounded;
+    }
+
+    private string FormatDiagnostic(DateTime? receivedAt, string? tickTime)
+    {
+        if (!receivedAt.HasValue)
+        {
+            return "none";
+        }
+
+        return tickTime is null
+            ? receivedAt.Value.ToString("HH:mm:ss")
+            : $"{tickTime} at {receivedAt.Value:HH:mm:ss}";
+    }
+
+    private string FormatNotificationDiagnostic()
+    {
+        if (!AppState.LastNotificationAttemptAt.HasValue)
+        {
+            return "none";
+        }
+
+        return $"{AppState.LastNotificationStatus} at {AppState.LastNotificationAttemptAt.Value:HH:mm:ss}";
     }
 }

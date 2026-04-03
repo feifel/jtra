@@ -21,6 +21,10 @@ public class AppState
     public bool ShowCheckInPopup { get; private set; }
     public bool IsConnectedToServer { get; private set; }
     public bool IsTimerTriggeredPopup { get; private set; }
+    public string? LastServerTickTime { get; private set; }
+    public DateTime? LastServerTickReceivedAt { get; private set; }
+    public DateTime? LastNotificationAttemptAt { get; private set; }
+    public string? LastNotificationStatus { get; private set; }
     
     public TimeSpan TodayAccumulated { get; private set; }
     public TimeSpan TodayTarget { get; private set; } = TimeSpan.FromHours(8);
@@ -103,7 +107,7 @@ public class AppState
     public async Task ConfirmCheckIn(TaskType type, string? ticket, string? description)
     {
         var now = DateTime.Now;
-        var startTime = RoundToNearest15Minutes(now).ToString("HH:mm");
+        var startTime = RoundToNearest5Minutes(now).ToString("HH:mm");
         var today = now.ToString("yyyy-MM-dd");
 
         var newEntry = new TimeEntry
@@ -145,7 +149,7 @@ public class AppState
         if (TimeSpan.TryParse(startTime, out var entryTime))
         {
             var entryDateTime = entryDate.Add(entryTime);
-            if (entryDateTime.TimeOfDay < now.TimeOfDay - TimeSpan.FromMinutes(15))
+            if (entryDateTime.TimeOfDay < now.TimeOfDay - TimeSpan.FromMinutes(5))
             {
                 entryDate = entryDate.AddDays(1);
             }
@@ -222,14 +226,38 @@ public class AppState
 
     public void TriggerCheckIn()
     {
-        if (SnoozedUntil.HasValue && DateTime.Now < SnoozedUntil.Value)
+        var now = DateTime.Now;
+
+        if (SnoozedUntil.HasValue && now < SnoozedUntil.Value)
         {
+            return;
+        }
+
+        if (!SnoozedUntil.HasValue && !IsRelevantCheckInTick(now))
+        {
+            CalculateNextCheckIn();
+            NotifyStateChanged();
             return;
         }
 
         ShowCheckInPopup = true;
         IsTimerTriggeredPopup = true;
         SnoozedUntil = null;
+        CalculateNextCheckIn();
+        NotifyStateChanged();
+    }
+
+    public void RecordServerTick(string time)
+    {
+        LastServerTickTime = time;
+        LastServerTickReceivedAt = DateTime.Now;
+        NotifyStateChanged();
+    }
+
+    public void RecordNotificationAttempt(string status)
+    {
+        LastNotificationAttemptAt = DateTime.Now;
+        LastNotificationStatus = status;
         NotifyStateChanged();
     }
 
@@ -306,6 +334,12 @@ public class AppState
     {
         Settings = settings;
         await _indexedDb.SaveSettingsAsync(settings);
+
+        if (!SnoozedUntil.HasValue || SnoozedUntil.Value <= DateTime.Now)
+        {
+            CalculateNextCheckIn();
+        }
+
         NotifyStateChanged();
     }
 
@@ -348,22 +382,36 @@ public class AppState
     private void CalculateNextCheckIn()
     {
         var now = DateTime.Now;
-        var minutes = now.Minute;
-        int nextQuarter = ((minutes / 15) + 1) * 15;
-        int nextHour = now.Hour;
-        
-        if (nextQuarter >= 60)
+        var interval = GetNotificationIntervalMinutes();
+        var minutesToAdd = interval - (now.Minute % interval);
+
+        if (minutesToAdd == 0)
         {
-            nextQuarter = 0;
-            nextHour++;
+            minutesToAdd = interval;
         }
 
-        if (nextHour >= 24)
+        var nextCheckIn = new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0)
+            .AddMinutes(minutesToAdd);
+
+        NextCheckInTime = nextCheckIn;
+    }
+
+    private bool IsRelevantCheckInTick(DateTime now)
+    {
+        var interval = GetNotificationIntervalMinutes();
+        return now.Minute % interval == 0;
+    }
+
+    private int GetNotificationIntervalMinutes()
+    {
+        var interval = Settings.NotificationIntervalMinutes;
+
+        if (interval <= 0 || interval > 60)
         {
-            nextHour = 0;
+            return 15;
         }
 
-        NextCheckInTime = new DateTime(now.Year, now.Month, now.Day, nextHour, nextQuarter, 0);
+        return interval;
     }
 
     private void RecalculateTodayStats()
@@ -456,19 +504,12 @@ public class AppState
         RecalculateTodayStats();
     }
 
-    private static DateTime RoundToNearest15Minutes(DateTime dt)
+    private static DateTime RoundToNearest5Minutes(DateTime dt)
     {
-        int minutes = dt.Minute;
-        int roundedMinutes;
-        
-        if (minutes <= 7 || minutes > 52) roundedMinutes = 0;
-        else if (minutes <= 22) roundedMinutes = 15;
-        else if (minutes <= 37) roundedMinutes = 30;
-        else roundedMinutes = 45;
-
+        int roundedMinutes = ((int)Math.Round(dt.Minute / 5.0) * 5) % 60;
         int hour = dt.Hour;
-        
-        if (minutes > 52)
+
+        if (roundedMinutes == 0 && dt.Minute >= 58)
         {
             hour = (hour + 1) % 24;
         }

@@ -30,12 +30,9 @@ public class FallbackTimerService : IDisposable
     private void CheckTime(object? state)
     {
         var now = DateTime.Now;
-        
-        if (now.Minute == 0 || now.Minute == 15 || now.Minute == 30 || now.Minute == 45)
-        {
-            _logger.LogInformation("Fallback timer tick at {Time}", now.ToString("HH:mm"));
-            OnTimerTick?.Invoke();
-        }
+
+        _logger.LogInformation("Fallback timer heartbeat at {Time}", now.ToString("HH:mm"));
+        OnTimerTick?.Invoke();
     }
 
     public void Dispose()

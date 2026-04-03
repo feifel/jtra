@@ -15,7 +15,10 @@
     <PropertyGroup>
       <BlazorClientDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../JtraClient'))</BlazorClientDir>
       <BlazorClientPublishDir>$(BlazorClientDir)/bin/BlazorPublish</BlazorClientPublishDir>
+      <ServerFrameworkDir>$(MSBuildThisFileDirectory)wwwroot/_framework</ServerFrameworkDir>
     </PropertyGroup>
+    <RemoveDir Directories="$(BlazorClientPublishDir)" />
+    <RemoveDir Directories="$(ServerFrameworkDir)" />
     <Exec Command="dotnet publish &quot;$(BlazorClientDir)/JtraClient.csproj&quot; -c $(Configuration) -o &quot;$(BlazorClientPublishDir)&quot; --nologo -v quiet" />
     <ItemGroup>
       <BlazorPublishedFiles Include="$(BlazorClientPublishDir)/wwwroot/**/*.*" />

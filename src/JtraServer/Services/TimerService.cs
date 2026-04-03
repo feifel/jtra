@@ -19,17 +19,17 @@ public class TimerService : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             var now = DateTime.Now;
-            var nextQuarter = GetNextQuarterHour(now);
-            var delay = nextQuarter - now;
+            var nextTick = GetNextMinuteBoundary(now);
+            var delay = nextTick - now;
 
-            _logger.LogInformation("Timer waiting {Delay} until {NextQuarter}", delay, nextQuarter.ToString("HH:mm"));
+            _logger.LogInformation("Timer waiting {Delay} until {NextTick}", delay, nextTick.ToString("HH:mm"));
 
             await Task.Delay(delay, stoppingToken);
 
             try
             {
-                await _hubContext.Clients.All.SendAsync("TimerTick", nextQuarter.ToString("HH:mm"), stoppingToken);
-                _logger.LogInformation("Timer tick sent at {Time}", nextQuarter.ToString("HH:mm"));
+                await _hubContext.Clients.All.SendAsync("TimerTick", nextTick.ToString("HH:mm"), stoppingToken);
+                _logger.LogInformation("Timer tick sent at {Time}", nextTick.ToString("HH:mm"));
             }
             catch (Exception ex)
             {
@@ -38,26 +38,8 @@ public class TimerService : BackgroundService
         }
     }
 
-    private static DateTime GetNextQuarterHour(DateTime now)
+    private static DateTime GetNextMinuteBoundary(DateTime now)
     {
-        var minutes = now.Minute;
-        int nextQuarterMinute;
-
-        if (minutes < 15) nextQuarterMinute = 15;
-        else if (minutes < 30) nextQuarterMinute = 30;
-        else if (minutes < 45) nextQuarterMinute = 45;
-        else nextQuarterMinute = 0;
-
-        var next = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0);
-        if (nextQuarterMinute == 0 && minutes >= 45)
-        {
-            next = next.AddHours(1);
-        }
-        else
-        {
-            next = next.AddMinutes(nextQuarterMinute);
-        }
-
-        return next;
+        return new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0).AddMinutes(1);
     }
 }

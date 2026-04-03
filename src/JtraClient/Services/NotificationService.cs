@@ -4,11 +4,13 @@ namespace JtraClient.Services;
 
 public class NotificationService
 {
+    private readonly AppState _appState;
     private readonly IJSRuntime _jsRuntime;
     private readonly ILogger<NotificationService> _logger;
 
-    public NotificationService(IJSRuntime jsRuntime, ILogger<NotificationService> logger)
+    public NotificationService(AppState appState, IJSRuntime jsRuntime, ILogger<NotificationService> logger)
     {
+        _appState = appState;
         _jsRuntime = jsRuntime;
         _logger = logger;
     }
@@ -24,10 +26,13 @@ public class NotificationService
     {
         try
         {
-            await _jsRuntime.InvokeVoidAsync("notificationInterop.show", title, body);
+            var status = await _jsRuntime.InvokeAsync<string>("notificationInterop.show", title, body);
+            _appState.RecordNotificationAttempt(status);
+            _logger.LogInformation("Notification attempt result: {Status}", status);
         }
         catch (Exception ex)
         {
+            _appState.RecordNotificationAttempt("error");
             _logger.LogError(ex, "Failed to show notification");
         }
     }
