@@ -1,5 +1,6 @@
 using JtraShared.Models;
 using System.Text;
+using System.Globalization;
 
 namespace JtraClient.Services;
 
@@ -130,6 +131,60 @@ public class CsvExportService
         }
 
         return entries;
+    }
+
+    public string ExportTicketsToCsv(List<TicketCache> tickets)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine("ticket_key,summary,last_used_at");
+
+        foreach (var ticket in tickets.OrderByDescending(t => t.LastUsedAt).ThenBy(t => t.TicketKey))
+        {
+            sb.AppendLine($"{EscapeCsv(ticket.TicketKey)},{EscapeCsv(ticket.Summary)},{ticket.LastUsedAt.ToString("O", CultureInfo.InvariantCulture)}");
+        }
+
+        return sb.ToString();
+    }
+
+    public List<TicketCache> ImportTicketsFromCsv(string csvContent)
+    {
+        var tickets = new List<TicketCache>();
+        var lines = csvContent.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        if (lines.Length == 0)
+        {
+            return tickets;
+        }
+
+        var header = lines[0].Trim();
+        if (!header.Equals("ticket_key,summary,last_used_at", StringComparison.OrdinalIgnoreCase))
+        {
+            return tickets;
+        }
+
+        for (int i = 1; i < lines.Length; i++)
+        {
+            var line = lines[i].Trim();
+            if (string.IsNullOrEmpty(line)) continue;
+
+            var parts = ParseCsvLine(line);
+            if (parts.Length < 3) continue;
+
+            var parsedDate = DateTime.TryParse(parts[2], CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var lastUsedAt)
+                ? lastUsedAt
+                : DateTime.Now;
+
+            tickets.Add(new TicketCache
+            {
+                TicketKey = parts[0],
+                Summary = parts[1],
+                UseCount = 1,
+                LastUsedAt = parsedDate
+            });
+        }
+
+        return tickets;
     }
 
     private static string EscapeCsv(string? value)

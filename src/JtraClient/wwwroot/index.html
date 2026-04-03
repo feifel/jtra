@@ -29,40 +29,8 @@
         <a class="dismiss">🗙</a>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
-    <script src="_framework/blazor.webassembly.js" autostart="false"></script>
+    <script src="_framework/blazor.webassembly.js"></script>
     <script>
-        // Clear stale service workers/caches to prevent mixed runtime payloads after upgrades.
-        async function clearClientCaches() {
-            if ('serviceWorker' in navigator) {
-                const registrations = await navigator.serviceWorker.getRegistrations();
-                for (const registration of registrations) {
-                    await registration.unregister();
-                }
-            }
-
-            if ('caches' in window) {
-                const keys = await caches.keys();
-                await Promise.all(keys.map(key => caches.delete(key)));
-            }
-        }
-
-        // Disable integrity checking (SRI hashes get stale during dev rebuilds).
-        // Returning a fetch() Promise bypasses Blazor's integrity validation.
-        (async function startBlazor() {
-            await clearClientCaches();
-            const cacheBust = `v=${Date.now()}`;
-
-            await Blazor.start({
-                loadBootResource: function (type, name, defaultUri, integrity) {
-                    if (type === 'dotnetjs') {
-                        return `${defaultUri}${defaultUri.includes('?') ? '&' : '?'}${cacheBust}`;
-                    }
-                    const resourceUrl = `${defaultUri}${defaultUri.includes('?') ? '&' : '?'}${cacheBust}`;
-                    return fetch(resourceUrl, { cache: 'no-cache' });
-                }
-            });
-        })();
-
         window.timerHubInterop = {
             connection: null,
             dotNetRef: null,

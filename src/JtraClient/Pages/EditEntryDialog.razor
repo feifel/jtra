@@ -74,7 +74,7 @@
         {
             <div class="ticket-picker">
                 <div class="ticket-picker-header">
-                    <span>Select from Favorites</span>
+                    <span>Select Ticket</span>
                     <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="HideTicketPicker">X</button>
                 </div>
                 @if (favoriteTickets.Any())
@@ -94,7 +94,7 @@
                 }
                 else
                 {
-                    <div class="ticket-picker-empty">No favorite tickets yet</div>
+                    <div class="ticket-picker-empty">No tickets yet</div>
                 }
             </div>
         }

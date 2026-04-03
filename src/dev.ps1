@@ -4,6 +4,13 @@
 
 $ErrorActionPreference = "Stop"
 
+$requiredSdkVersion = "8.0.125"
+$activeSdkVersion = (& dotnet --version).Trim()
+
+if ($activeSdkVersion -ne $requiredSdkVersion) {
+	throw "SDK mismatch. Required: $requiredSdkVersion, active: $activeSdkVersion. Run from repository root so global.json is applied and install the required SDK if missing."
+}
+
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $serverDir = Join-Path $scriptDir "JtraServer"
 
@@ -15,11 +22,12 @@ if (Test-Path $frameworkDir) {
 }
 
 Write-Host "Starting JTRA in development mode with hot reload..."
+Write-Host "Using .NET SDK $activeSdkVersion"
 Write-Host ""
 
 Push-Location $serverDir
 try {
-	& dotnet watch run @args
+	& dotnet watch --no-hot-reload run @args
 }
 finally {
 	Pop-Location

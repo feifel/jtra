@@ -43,12 +43,6 @@
         <input type="number" @bind="settings.AutoConfirmBreakMinutes" class="form-control" min="1" max="30" />
     </div>
 
-    <div class="form-group">
-        <label>Ticket Cache Size</label>
-        <input type="number" @bind="settings.TicketCacheSize" class="form-control" min="5" max="100" />
-        <small class="form-text text-muted">Maximum number of recently used tickets to cache.</small>
-    </div>
-
     <div class="form-group form-check">
         <input type="checkbox" @bind="settings.Use24HourFormat" class="form-check-input" id="use24h" />
         <label class="form-check-label" for="use24h">Use 24-hour time format</label>
@@ -81,7 +75,6 @@
             NotificationIntervalMinutes = AppState.Settings.NotificationIntervalMinutes,
             MaxSnoozeHours = AppState.Settings.MaxSnoozeHours,
             AutoConfirmBreakMinutes = AppState.Settings.AutoConfirmBreakMinutes,
-            TicketCacheSize = AppState.Settings.TicketCacheSize,
             Use24HourFormat = AppState.Settings.Use24HourFormat,
             CsvExportOldestFirst = AppState.Settings.CsvExportOldestFirst
         };

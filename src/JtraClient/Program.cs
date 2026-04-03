@@ -14,6 +14,7 @@ builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(serverUr
 
 builder.Services.AddScoped<IndexedDbService>();
 builder.Services.AddScoped<CsvExportService>();
+builder.Services.AddScoped<JiraTicketService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddSingleton<FallbackTimerService>();

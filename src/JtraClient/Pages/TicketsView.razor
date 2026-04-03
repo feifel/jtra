@@ -1,0 +1,334 @@
+@page "/tickets"
+@page "/favorites"
+@implements IDisposable
+
+<PageTitle>JTRA - Tickets</PageTitle>
+
+<div class="entries-header">
+    <h2>Tickets</h2>
+    <div class="header-buttons">
+        <button class="btn btn-primary" @onclick="ToggleAddForm">Add</button>
+        <div class="dropdown" style="position: relative; display: inline-block;">
+            <button class="btn btn-outline-secondary" @onclick="ToggleDataMenu" @onclick:stopPropagation="true">...</button>
+            @if (showDataMenu)
+            {
+                <div class="dropdown-menu show" style="display: block; position: absolute; right: 0; top: 100%; z-index: 1000;">
+                    <button class="dropdown-item" @onclick="ExportData" @onclick:stopPropagation="true">Export CSV</button>
+                    <label class="dropdown-item mb-0" style="cursor: pointer;">
+                        Import CSV
+                        <input type="file" @ref="fileInput" @onchange="ImportData" accept=".csv" style="display: none;" />
+                    </label>
+                    <div class="dropdown-divider"></div>
+                    <button class="dropdown-item text-danger" @onclick="ClearAllTickets" @onclick:stopPropagation="true">Clear All</button>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (showAddForm)
+{
+    <div class="ticket-add-panel">
+        <input type="text" @bind="newTicketKey" @bind:event="oninput" class="form-control" placeholder="JIRA-123" @onkeydown="HandleAddKeyDown" disabled="@isSavingTicket" />
+        <div class="ticket-add-actions">
+            <button class="btn btn-primary" @onclick="AddTicketAsync" disabled="@isSavingTicket">
+                @(isSavingTicket ? "Adding..." : "Add Ticket")
+            </button>
+            <button class="btn btn-secondary" @onclick="CancelAdd" disabled="@isSavingTicket">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrWhiteSpace(feedbackMessage))
+{
+    <div class="ticket-feedback @(feedbackIsError ? "ticket-feedback-error" : "ticket-feedback-success")">@feedbackMessage</div>
+}
+
+@if (cachedTickets.Any())
+{
+    <div class="entries-list tickets-list">
+        <div class="entry-row entry-header">
+            <div class="entry-ticket">Ticket Nr.</div>
+            <div class="entry-description">Description</div>
+            <div class="entry-last-used">Last Used At</div>
+            <div class="entry-actions"></div>
+        </div>
+        @foreach (var ticket in cachedTickets.OrderByDescending(t => t.LastUsedAt).ThenBy(t => t.TicketKey))
+        {
+            <div class="entry-row">
+                <div class="entry-ticket">
+                    <a href="@GetJiraTicketUrl(ticket.TicketKey)" target="_blank" rel="noopener noreferrer">@ticket.TicketKey</a>
+                </div>
+                <div class="entry-description">@ticket.Summary</div>
+                <div class="entry-last-used">@FormatLastUsedAt(ticket.LastUsedAt)</div>
+                <div class="entry-actions">
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteTicketAsync(ticket.TicketKey)">Remove</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <p class="no-entries">No tickets yet. Click "Add" to create one.</p>
+}
+
+@code {
+    [Inject] private AppState AppState { get; set; } = default!;
+    [Inject] private IndexedDbService IndexedDb { get; set; } = default!;
+    [Inject] private CsvExportService CsvExport { get; set; } = default!;
+    [Inject] private JiraTicketService JiraTicketService { get; set; } = default!;
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    private readonly List<TicketCache> cachedTickets = new();
+    private bool showAddForm;
+    private bool showDataMenu;
+    private bool isSavingTicket;
+    private string newTicketKey = string.Empty;
+    private string? feedbackMessage;
+    private bool feedbackIsError;
+    private ElementReference fileInput;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCachedTicketsAsync();
+        AppState.OnChange += HandleAppStateChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= HandleAppStateChanged;
+    }
+
+    private void HandleAppStateChanged()
+    {
+        _ = RefreshFromAppStateAsync();
+    }
+
+    private async Task RefreshFromAppStateAsync()
+    {
+        await LoadCachedTicketsAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadCachedTicketsAsync()
+    {
+        cachedTickets.Clear();
+        cachedTickets.AddRange((await IndexedDb.GetAllCachedTicketsAsync())
+            .OrderByDescending(t => t.LastUsedAt)
+            .ThenBy(t => t.TicketKey));
+    }
+
+    private void ToggleAddForm()
+    {
+        showAddForm = !showAddForm;
+        showDataMenu = false;
+
+        if (showAddForm)
+        {
+            ClearFeedback();
+        }
+        else
+        {
+            newTicketKey = string.Empty;
+        }
+    }
+
+    private void CancelAdd()
+    {
+        showAddForm = false;
+        newTicketKey = string.Empty;
+        ClearFeedback();
+    }
+
+    private void ToggleDataMenu()
+    {
+        showDataMenu = !showDataMenu;
+    }
+
+    private async Task HandleAddKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await AddTicketAsync();
+        }
+    }
+
+    private async Task AddTicketAsync()
+    {
+        ClearFeedback();
+
+        var normalizedTicketKey = NormalizeTicketKey(newTicketKey);
+        if (string.IsNullOrWhiteSpace(normalizedTicketKey))
+        {
+            SetFeedback("Enter a ticket number first.", true);
+            return;
+        }
+
+        isSavingTicket = true;
+
+        try
+        {
+            var summary = await JiraTicketService.GetTicketSummaryAsync(AppState.Settings, normalizedTicketKey);
+            var existing = cachedTickets.FirstOrDefault(t =>
+                string.Equals(t.TicketKey, normalizedTicketKey, StringComparison.OrdinalIgnoreCase));
+
+            await UpsertTicketAsync(new TicketCache
+            {
+                TicketKey = normalizedTicketKey,
+                Summary = summary,
+                UseCount = existing?.UseCount ?? 1,
+                LastUsedAt = DateTime.Now
+            });
+
+            await LoadCachedTicketsAsync();
+
+            newTicketKey = string.Empty;
+            showAddForm = false;
+            SetFeedback(existing == null ? "Ticket added." : "Ticket updated and moved to the top.", false);
+        }
+        catch (Exception ex)
+        {
+            SetFeedback(ex.Message, true);
+        }
+        finally
+        {
+            isSavingTicket = false;
+        }
+    }
+
+    private async Task DeleteTicketAsync(string ticketKey)
+    {
+        await IndexedDb.DeleteCachedTicketAsync(ticketKey);
+        await LoadCachedTicketsAsync();
+        ClearFeedback();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ClearAllTickets()
+    {
+        showDataMenu = false;
+
+        var confirmed = await JS.InvokeAsync<bool>("confirm", "Are you sure you want to clear all tickets?");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        await IndexedDb.ClearTicketCacheAsync();
+        await LoadCachedTicketsAsync();
+        SetFeedback("All tickets cleared.", false);
+    }
+
+    private async Task ExportData()
+    {
+        showDataMenu = false;
+
+        var csv = CsvExport.ExportTicketsToCsv(cachedTickets);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", $"jtra-tickets-export-{DateTime.Today:yyyy-MM-dd}.csv", "text/csv", base64);
+    }
+
+    private async Task ImportData(ChangeEventArgs e)
+    {
+        showDataMenu = false;
+        ClearFeedback();
+
+        var fileContent = await JS.InvokeAsync<string>("readFileContentFromInput", fileInput);
+        if (string.IsNullOrEmpty(fileContent))
+        {
+            return;
+        }
+
+        var importedTickets = CsvExport.ImportTicketsFromCsv(fileContent);
+        var importedCount = 0;
+
+        foreach (var ticket in importedTickets)
+        {
+            if (string.IsNullOrWhiteSpace(ticket.TicketKey))
+            {
+                continue;
+            }
+
+            await UpsertTicketAsync(ticket);
+            importedCount++;
+        }
+
+        await LoadCachedTicketsAsync();
+        SetFeedback(importedCount == 0 ? "No tickets were imported." : $"Imported {importedCount} ticket(s).", importedCount == 0);
+    }
+
+    private async Task UpsertTicketAsync(TicketCache ticket)
+    {
+        var normalizedTicketKey = NormalizeTicketKey(ticket.TicketKey);
+        var existing = cachedTickets.FirstOrDefault(t =>
+            string.Equals(t.TicketKey, normalizedTicketKey, StringComparison.OrdinalIgnoreCase));
+
+        if (existing == null)
+        {
+            ticket.TicketKey = normalizedTicketKey;
+            ticket.LastUsedAt = ticket.LastUsedAt == default ? DateTime.Now : ticket.LastUsedAt;
+            ticket.UseCount = Math.Max(ticket.UseCount, 1);
+            await IndexedDb.AddTicketToCacheAsync(ticket);
+            return;
+        }
+
+        var originalTicketKey = existing.TicketKey;
+        existing.TicketKey = normalizedTicketKey;
+        existing.Summary = string.IsNullOrWhiteSpace(ticket.Summary) ? existing.Summary : ticket.Summary;
+        existing.LastUsedAt = ticket.LastUsedAt > existing.LastUsedAt ? ticket.LastUsedAt : existing.LastUsedAt;
+        existing.UseCount = Math.Max(existing.UseCount, ticket.UseCount);
+
+        if (!string.Equals(originalTicketKey, normalizedTicketKey, StringComparison.Ordinal))
+        {
+            await IndexedDb.DeleteCachedTicketAsync(originalTicketKey);
+        }
+
+        await IndexedDb.UpdateTicketCacheAsync(existing);
+    }
+
+    private string GetJiraTicketUrl(string ticketKey)
+    {
+        var baseUrl = AppState.Settings.JiraBaseUrl;
+        if (string.IsNullOrEmpty(baseUrl)) return "#";
+        return baseUrl.TrimEnd('/') + "/browse/" + ticketKey;
+    }
+
+    private static string FormatLastUsedAt(DateTime lastUsedAt)
+    {
+        return lastUsedAt.ToLocalTime().ToString("yyyy.MM.dd HH:mm");
+    }
+
+    private static string NormalizeTicketKey(string? ticketKey)
+    {
+        var trimmed = (ticketKey ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var chars = trimmed.ToCharArray();
+        for (int i = 0; i < chars.Length; i++)
+        {
+            if (chars[i] >= 'a' && chars[i] <= 'z')
+            {
+                chars[i] = (char)(chars[i] - ('a' - 'A'));
+            }
+        }
+
+        return new string(chars);
+    }
+
+    private void ClearFeedback()
+    {
+        feedbackMessage = null;
+        feedbackIsError = false;
+    }
+
+    private void SetFeedback(string message, bool isError)
+    {
+        feedbackMessage = message;
+        feedbackIsError = isError;
+    }
+}

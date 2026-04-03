@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace JtraServer.Controllers;
 
@@ -38,7 +39,26 @@ public static class JiraControllerExtensions
             }
 
             var content = await response.Content.ReadAsStringAsync();
-            return Results.Text(content, "application/json");
+
+            try
+            {
+                using var document = JsonDocument.Parse(content);
+                if (document.RootElement.TryGetProperty("fields", out var fields)
+                    && fields.TryGetProperty("summary", out var summaryElement))
+                {
+                    var summary = summaryElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(summary))
+                    {
+                        return Results.Json(new { summary });
+                    }
+                }
+
+                return Results.NotFound("Ticket summary not found");
+            }
+            catch (JsonException)
+            {
+                return Results.Problem("Invalid JSON returned from JIRA");
+            }
         }
         catch (Exception ex)
         {

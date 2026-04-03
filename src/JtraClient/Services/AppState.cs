@@ -6,6 +6,7 @@ namespace JtraClient.Services;
 public class AppState
 {
     private readonly IndexedDbService _indexedDb;
+    private readonly JiraTicketService _jiraTicketService;
     private readonly ILogger<AppState> _logger;
 
     public event Action? OnChange;
@@ -31,9 +32,10 @@ public class AppState
     public TimeSpan TodayTarget { get; private set; } = TimeSpan.FromHours(8);
     public TimeSpan TodayDeviation => TodayAccumulated - TodayTarget;
 
-    public AppState(IndexedDbService indexedDb, ILogger<AppState> logger)
+    public AppState(IndexedDbService indexedDb, JiraTicketService jiraTicketService, ILogger<AppState> logger)
     {
         _indexedDb = indexedDb;
+        _jiraTicketService = jiraTicketService;
         _logger = logger;
     }
 
@@ -317,6 +319,11 @@ public class AppState
             AllEntries[index] = entry;
         }
 
+        if (!string.IsNullOrWhiteSpace(entry.Ticket))
+        {
+            await UpdateTicketCacheAsync(entry.Ticket);
+        }
+
         RebuildTodayEntries();
 
         await RecalculateAllEntriesAsync();
@@ -327,6 +334,12 @@ public class AppState
     {
         entry.Id = await _indexedDb.AddTimeEntryAsync(entry);
         AllEntries.Add(entry);
+
+        if (!string.IsNullOrWhiteSpace(entry.Ticket))
+        {
+            await UpdateTicketCacheAsync(entry.Ticket);
+        }
+
         RebuildTodayEntries();
         await RecalculateAllEntriesAsync();
         NotifyStateChanged();
@@ -563,33 +576,65 @@ public class AppState
 
     private async Task UpdateTicketCacheAsync(string ticketKey)
     {
-        var existing = await _indexedDb.GetTicketFromCacheAsync(ticketKey);
+        var normalizedTicketKey = NormalizeTicketKey(ticketKey);
+        if (string.IsNullOrWhiteSpace(normalizedTicketKey))
+        {
+            return;
+        }
+
+        var allTickets = await _indexedDb.GetAllCachedTicketsAsync();
+        var existing = allTickets.FirstOrDefault(t =>
+            string.Equals(t.TicketKey, normalizedTicketKey, StringComparison.OrdinalIgnoreCase));
+        var summary = await TryGetTicketSummaryAsync(normalizedTicketKey);
         
         if (existing != null)
         {
+            var originalTicketKey = existing.TicketKey;
+            existing.TicketKey = normalizedTicketKey;
             existing.UseCount++;
             existing.LastUsedAt = DateTime.Now;
+
+            if (!string.IsNullOrWhiteSpace(summary))
+            {
+                existing.Summary = summary;
+            }
+
+            if (!string.Equals(originalTicketKey, normalizedTicketKey, StringComparison.Ordinal))
+            {
+                await _indexedDb.DeleteCachedTicketAsync(originalTicketKey);
+            }
+
             await _indexedDb.UpdateTicketCacheAsync(existing);
         }
         else
         {
-            var allTickets = await _indexedDb.GetAllCachedTicketsAsync();
-            
-            if (allTickets.Count >= Settings.TicketCacheSize)
-            {
-                var oldest = allTickets.OrderBy(t => t.LastUsedAt).First();
-                await _indexedDb.DeleteCachedTicketAsync(oldest.TicketKey);
-            }
-            
             var newTicket = new TicketCache
             {
-                TicketKey = ticketKey,
-                Summary = "",
+                TicketKey = normalizedTicketKey,
+                Summary = summary ?? string.Empty,
                 UseCount = 1,
                 LastUsedAt = DateTime.Now
             };
             await _indexedDb.AddTicketToCacheAsync(newTicket);
         }
+    }
+
+    private async Task<string?> TryGetTicketSummaryAsync(string ticketKey)
+    {
+        try
+        {
+            return await _jiraTicketService.GetTicketSummaryAsync(Settings, ticketKey);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogInformation(ex, "JIRA summary lookup failed for ticket {TicketKey}", ticketKey);
+            return null;
+        }
+    }
+
+    private static string NormalizeTicketKey(string? ticketKey)
+    {
+        return (ticketKey ?? string.Empty).Trim().ToUpper();
     }
 
     private async Task SaveConnectionState()
