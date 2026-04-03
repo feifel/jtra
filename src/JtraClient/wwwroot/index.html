@@ -501,6 +501,20 @@
             }
         };
 
+        window.scrollToBottom = function(el) {
+            if (el) el.scrollTop = el.scrollHeight;
+        };
+
+        window.readFileContentFromInput = function(el) {
+            return new Promise((resolve) => {
+                if (!el || !el.files || el.files.length === 0) { resolve(null); return; }
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = () => resolve(null);
+                reader.readAsText(el.files[0]);
+            });
+        };
+
         window.downloadFile = function(filename, mimeType, base64Content) {
             const link = document.createElement('a');
             link.href = 'data:' + mimeType + ';base64,' + base64Content;

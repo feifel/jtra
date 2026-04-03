@@ -1,3 +1,7 @@
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
 html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
@@ -21,7 +25,7 @@ a, .btn-link {
 }
 
 .content {
-    padding-top: 1.1rem;
+    padding-top: 0px;
 }
 
 .valid.modified:not([type=checkbox]) {
@@ -105,7 +109,7 @@ code {
 .today-stats {
     display: flex;
     gap: 1rem;
-    margin-bottom: 1.5rem;
+    margin-bottom: 0;
 }
 
 .stat-card {
@@ -163,20 +167,48 @@ code {
     text-align: center;
 }
 
-.entries-list {
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
+.home-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    height: calc(100dvh - 4rem);
+    min-height: 0;
     overflow: hidden;
+}
+
+.entries-scroll-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: block;
+}
+
+.today-stats,
+.inline-add-row {
+    flex-shrink: 0;
+}
+
+.entries-list {
+    border-radius: 8px;
 }
 
 .entry-row {
     display: grid;
-    grid-template-columns: 80px 100px 100px 100px 1fr 80px 100px;
+    grid-template-columns: 165px 110px 90px 100px 1fr 75px 100px;
     gap: 0.5rem;
     padding: 0.75rem 1rem;
     border-bottom: 1px solid #dee2e6;
     align-items: center;
     cursor: pointer;
+}
+
+.entry-row.entry-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #fff;
+    box-shadow: 0 1px 0 #dee2e6;
+    cursor: default;
 }
 
 .entry-row:last-child {
@@ -194,8 +226,74 @@ code {
     text-overflow: ellipsis;
 }
 
+.entry-actions {
+    overflow: visible !important;
+}
+
 .entry-time {
     font-weight: 500;
+}
+
+.entry-datetime {
+    font-weight: 500;
+}
+
+.inline-add-row {
+    flex-shrink: 0;
+    border-top: 2px solid #dee2e6;
+    background: #fff;
+    cursor: default;
+}
+
+.inline-add-row:hover {
+    background: #fff;
+}
+
+.inline-add-row input,
+.inline-add-row select {
+    min-width: 0;
+    font-size: 0.75rem;
+    padding: 0.1rem 0.25rem;
+}
+
+.inline-datetime-cell {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.inline-datetime-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 128px;
+}
+
+.spin-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.spin-btn {
+    width: 1.35rem;
+    height: 0.82rem;
+    min-height: 0.82rem;
+    line-height: 0.5rem;
+    font-size: 0.58rem;
+    padding: 0;
+}
+
+.inline-add-category {
+    grid-column: 2 / 4;
+}
+
+.inline-add-row .entry-actions {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    white-space: nowrap;
+    position: relative;
 }
 
 .entry-type {

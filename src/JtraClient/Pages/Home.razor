@@ -3,113 +3,131 @@
 
 <PageTitle>JTRA - Home</PageTitle>
 
-<div class="today-stats">
-    <div class="stat-card">
-        <h3>Target</h3>
-        <span class="stat-value">@AppState.TodayTarget.ToString(@"hh\:mm")</span>
+<div class="home-layout">
+    <div class="today-stats">
+        <div class="stat-card">
+            <h3>Target</h3>
+            <span class="stat-value">@AppState.TodayTarget.ToString(@"hh\:mm")</span>
+        </div>
+        <div class="stat-card">
+            <h3>Logged</h3>
+            <span class="stat-value">@AppState.TodayAccumulated.ToString(@"hh\:mm")</span>
+        </div>
+        <div class="stat-card @(AppState.TodayDeviation.TotalMinutes < 0 ? "negative" : "positive")">
+            <h3>Deviation</h3>
+            <span class="stat-value">@AppState.TodayDeviation.ToString(@"hh\:mm")</span>
+        </div>
     </div>
-    <div class="stat-card">
-        <h3>Logged</h3>
-        <span class="stat-value">@AppState.TodayAccumulated.ToString(@"hh\:mm")</span>
-    </div>
-    <div class="stat-card @(AppState.TodayDeviation.TotalMinutes < 0 ? "negative" : "positive")">
-        <h3>Deviation</h3>
-        <span class="stat-value">@AppState.TodayDeviation.ToString(@"hh\:mm")</span>
-    </div>
-</div>
 
-<div class="entries-header">
-    <div class="date-navigation">
-        <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousDay">&lt;</button>
-        <input type="date" @bind="selectedDate" @bind:format="yyyy-MM-dd" class="form-control form-control-sm date-picker" />
-        <button class="btn btn-sm btn-outline-secondary" @onclick="NextDay">&gt;</button>
-        @if (selectedDate.Date != DateTime.Today)
-        {
-            <button class="btn btn-sm btn-outline-primary" @onclick="GoToToday">Today</button>
-        }
-    </div>
-    <div class="header-buttons">
-        <button class="btn btn-primary" @onclick="ShowNewEntryDialog">Add Entry</button>
-        <div class="dropdown" style="position: relative; display: inline-block;">
-            <button class="btn btn-outline-secondary" @onclick="ToggleDataMenu" @onclick:stopPropagation="true">...</button>
-            @if (showDataMenu)
+    <div class="entries-scroll-container" @ref="scrollContainer">
+        <div class="entries-list">
+            <div class="entry-row entry-header">
+                <div class="entry-datetime">Date &amp; Time</div>
+                <div class="entry-category">Category</div>
+                <div class="entry-subcategory">Subcategory</div>
+                <div class="entry-ticket">Ticket</div>
+                <div class="entry-description">Description</div>
+                <div class="entry-duration">Duration</div>
+                <div class="entry-actions" style="text-align: center;">Pending</div>
+            </div>
+            @if (!AppState.AllEntries.Any())
             {
-                <div class="dropdown-menu show" style="display: block; position: absolute; right: 0; top: 100%; z-index: 1000;">
-                    <button class="dropdown-item" @onclick="SubmitPendingTasks" @onclick:stopPropagation="true" disabled="@submitting">
-                        @if (submitting)
+                <p class="no-entries">No entries yet.</p>
+            }
+            @foreach (var entry in AppState.AllEntries.OrderBy(e => e.Date).ThenBy(e => DurationCalculator.GetStartMinutesOrMax(e.StartTime)).ThenBy(e => e.StartTime).ThenBy(e => e.Id))
+            {
+                var (entryCategory, entrySubcategory) = GetEntryLabels(entry);
+                var calculatedDuration = DurationCalculator.FormatMinutes(DurationCalculator.CalculateDurationMinutes(AppState.AllEntries, entry));
+                <div class="entry-row" @ondblclick="() => StartEdit(entry)">
+                    <div class="entry-datetime">@FormatDateTime(entry.Date, entry.StartTime)</div>
+                    <div class="entry-category">@entryCategory</div>
+                    <div class="entry-subcategory">@entrySubcategory</div>
+                    <div class="entry-ticket">@entry.Ticket</div>
+                    <div class="entry-description">@entry.Description</div>
+                    <div class="entry-duration">@calculatedDuration</div>
+                    <div class="entry-actions" style="display: flex; justify-content: center; align-items: center;">
+                        @if (IsJiraSubmittable(entry))
                         {
-                            <span>Submitting...</span>
+                            <input type="checkbox" @bind="entry.PendingForJiraSubmission" @bind:event="oninput" @onclick:stopPropagation="true" @onchange="() => SavePending(entry)" title="Checked means this entry will be included in the next bulk JIRA submission." />
                         }
                         else
                         {
-                            <span>Submit pending tasks</span>
+                            <span title="This entry has no ticket and cannot be submitted to JIRA">-</span>
                         }
-                    </button>
-                    <div class="dropdown-divider"></div>
-                    <button class="dropdown-item" @onclick="ExportData" @onclick:stopPropagation="true">Export CSV</button>
-                    <label class="dropdown-item mb-0" style="cursor: pointer;">
-                        Import CSV
-                        <input type="file" @ref="fileInput" @onchange="ImportData" accept=".csv" style="display: none;" />
-                    </label>
-                    <div class="dropdown-divider"></div>
-                    <button class="dropdown-item text-danger" @onclick="ClearAllData" @onclick:stopPropagation="true">Clear All Data</button>
+                    </div>
                 </div>
             }
         </div>
     </div>
-</div>
 
-@if (DisplayedEntries.Any())
-{
-    <div class="entries-list">
-        <div class="entry-row entry-header">
-            <div class="entry-time">Time</div>
-            <div class="entry-category">Category</div>
-            <div class="entry-subcategory">Subcategory</div>
-            <div class="entry-ticket">Ticket</div>
-            <div class="entry-description">Description</div>
-            <div class="entry-duration">Duration</div>
-            <div class="entry-actions" style="text-align: center;">Pending</div>
-        </div>
-        @foreach (var entry in DisplayedEntries.OrderByDescending(e => DurationCalculator.GetStartMinutesOrMax(e.StartTime)).ThenByDescending(e => e.StartTime).ThenByDescending(e => e.Id))
-        {
-            var (entryCategory, entrySubcategory) = GetEntryLabels(entry);
-            var calculatedDuration = DurationCalculator.FormatMinutes(DurationCalculator.CalculateDurationMinutes(DisplayedEntries, entry));
-            <div class="entry-row" @ondblclick="() => StartEdit(entry)">
-                <div class="entry-time">@FormatTime(entry.StartTime)</div>
-                <div class="entry-category">@entryCategory</div>
-                <div class="entry-subcategory">@entrySubcategory</div>
-                <div class="entry-ticket">@entry.Ticket</div>
-                <div class="entry-description">@entry.Description</div>
-                <div class="entry-duration">@calculatedDuration</div>
-                <div class="entry-actions" style="display: flex; justify-content: center; align-items: center;">
-                    @if (IsJiraSubmittable(entry))
-                    {
-                        <input type="checkbox" @bind="entry.PendingForJiraSubmission" @bind:event="oninput" @onclick:stopPropagation="true" @onchange="() => SavePending(entry)" title="Checked means this entry will be included in the next bulk JIRA submission." />
-                    }
-                    else
-                    {
-                        <span title="This entry has no ticket and cannot be submitted to JIRA">-</span>
-                    }
-                </div>
+    <div class="entry-row inline-add-row">
+        <div class="entry-datetime inline-datetime-cell">
+            <input type="text" value="@inlineDateTimeText" @onchange="HandleInlineDateTimeChanged" class="form-control form-control-sm inline-datetime-input" placeholder="yyyy.MM.dd HH:mm" />
+            <div class="spin-buttons" title="Step by Check-In Interval">
+                <button type="button" class="btn btn-sm btn-outline-secondary spin-btn" @onclick="IncrementTime">&#9650;</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary spin-btn" @onclick="DecrementTime">&#9660;</button>
             </div>
-        }
+        </div>
+        <div class="entry-category inline-add-category">
+            <select value="@inlineTaskSelection" @onchange="HandleInlineTaskChanged" class="form-control form-control-sm">
+                <option value="@BreakSelectionValue">Break</option>
+                @foreach (var task in AppState.AllTaskEntries.OrderBy(t => t.Category).ThenBy(t => t.Subcategory))
+                {
+                    <option value="@task.Id">@FormatTaskOption(task)</option>
+                }
+            </select>
+        </div>
+        <div class="entry-ticket">
+            @if (inlineTaskSelection != BreakSelectionValue)
+            {
+                <input type="text" @bind="inlineTicket" class="form-control form-control-sm" placeholder="JIRA-123" />
+            }
+        </div>
+        <div class="entry-description">
+            <input type="text" @bind="inlineDescription" @bind:event="oninput" class="form-control form-control-sm" placeholder="Description..." maxlength="100" @onkeydown="HandleInlineKeyDown" />
+        </div>
+        <div class="entry-duration"></div>
+        <div class="entry-actions" style="display: flex; justify-content: center; align-items: center;">
+            <button class="btn btn-sm btn-primary" @onclick="AddInlineEntry">Add</button>
+            <div class="dropdown" style="position: relative; display: inline-block; margin-left: 0.25rem;">
+                <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleDataMenu" @onclick:stopPropagation="true">...</button>
+                @if (showDataMenu)
+                {
+                    <div class="dropdown-menu show" style="display: block; position: absolute; right: 0; bottom: 100%; z-index: 1000;">
+                        <button class="dropdown-item" @onclick="SubmitPendingTasks" @onclick:stopPropagation="true" disabled="@submitting">
+                            @if (submitting)
+                            {
+                                <span>Submitting...</span>
+                            }
+                            else
+                            {
+                                <span>Submit pending tasks</span>
+                            }
+                        </button>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item" @onclick="ExportData" @onclick:stopPropagation="true">Export CSV</button>
+                        <label class="dropdown-item mb-0" style="cursor: pointer;">
+                            Import CSV
+                            <input type="file" @ref="fileInput" @onchange="ImportData" accept=".csv" style="display: none;" />
+                        </label>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item text-danger" @onclick="ClearAllData" @onclick:stopPropagation="true">Clear All Data</button>
+                    </div>
+                }
+            </div>
+        </div>
     </div>
-}
-else
-{
-    <p class="no-entries">No entries for @selectedDate.ToString("ddd, MMM d, yyyy").</p>
-}
 
-@if (showEditDialog && editingEntry != null)
-{
-    <EditEntryDialog Entry="editingEntry"
-                     OnSave="SaveEntry"
-                     OnDelete="DeleteEntry"
-                     OnClose="CloseEditDialog"
-                     OnEstimatedEndSelected="HandleEstimatedEndSelected"
-                     ShowEstimatedEndOption="showEstimatedEndForEditingEntry" />
-}
+    @if (showEditDialog && editingEntry != null)
+    {
+        <EditEntryDialog Entry="editingEntry"
+                         OnSave="SaveEntry"
+                         OnDelete="DeleteEntry"
+                         OnClose="CloseEditDialog"
+                         OnEstimatedEndSelected="HandleEstimatedEndSelected"
+                         ShowEstimatedEndOption="showEstimatedEndForEditingEntry" />
+    }
+</div>
 
 @code {
     [Inject] private AppState AppState { get; set; } = default!;
@@ -124,42 +142,149 @@ else
     private bool submitting = false;
     private TimeEntry? editingEntry;
     private bool showEstimatedEndForEditingEntry;
-    private DateTime selectedDate = DateTime.Today;
     private ElementReference fileInput;
+    private ElementReference scrollContainer;
+    private bool _shouldScroll = true;
 
-    private IEnumerable<TimeEntry> DisplayedEntries => selectedDate.Date == DateTime.Today 
-        ? AppState.TodayEntries 
-        : AppState.AllEntries.Where(e => e.Date == selectedDate.ToString("yyyy-MM-dd"));
+    private string inlineDateTimeText = string.Empty;
+    private string inlineTaskSelection = BreakSelectionValue;
+    private string inlineTicket = string.Empty;
+    private string inlineDescription = string.Empty;
+    private TaskType inlineTaskType = TaskType.Ticket;
+
+    private const string BreakSelectionValue = "__break__";
 
     protected override void OnInitialized()
     {
-        AppState.OnChange += StateHasChanged;
+        inlineDateTimeText = FormatInlineDateTime(RoundToNearest5(DateTime.Now));
+        InitializeInlineTaskSelection();
+        AppState.OnChange += OnAppStateChanged;
+    }
+
+    private void InitializeInlineTaskSelection()
+    {
+        var firstTask = AppState.AllTaskEntries
+            .OrderBy(t => t.Category)
+            .ThenBy(t => t.Subcategory)
+            .FirstOrDefault();
+
+        if (firstTask != null)
+        {
+            ApplyInlineTaskSelection(firstTask.Id.ToString());
+        }
+        else
+        {
+            ApplyInlineTaskSelection(BreakSelectionValue);
+        }
+    }
+
+    private void OnAppStateChanged()
+    {
+        _shouldScroll = true;
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender || _shouldScroll)
+        {
+            _shouldScroll = false;
+            try
+            {
+                await JS.InvokeVoidAsync("scrollToBottom", scrollContainer);
+            }
+            catch
+            {
+                // Element may not be ready; ignore
+            }
+        }
     }
 
     public void Dispose()
     {
-        AppState.OnChange -= StateHasChanged;
+        AppState.OnChange -= OnAppStateChanged;
     }
 
-    private void PreviousDay()
+    private void HandleInlineDateTimeChanged(ChangeEventArgs e)
     {
-        selectedDate = selectedDate.AddDays(-1);
+        inlineDateTimeText = e.Value?.ToString() ?? inlineDateTimeText;
     }
 
-    private void NextDay()
+    private void HandleInlineTaskChanged(ChangeEventArgs e)
     {
-        selectedDate = selectedDate.AddDays(1);
+        ApplyInlineTaskSelection(e.Value?.ToString() ?? inlineTaskSelection);
     }
 
-    private void GoToToday()
+    private void ApplyInlineTaskSelection(string selection)
     {
-        selectedDate = DateTime.Today;
+        inlineTaskSelection = selection;
+
+        if (inlineTaskSelection == BreakSelectionValue)
+        {
+            inlineTaskType = TaskType.Break;
+            inlineTicket = string.Empty;
+            inlineDescription = string.Empty;
+            return;
+        }
+
+        if (int.TryParse(inlineTaskSelection, out var taskId))
+        {
+            var task = AppState.AllTaskEntries.FirstOrDefault(t => t.Id == taskId);
+            if (task != null)
+            {
+                inlineTaskType = TaskType.Ticket;
+                inlineTicket = task.Ticket ?? string.Empty;
+                inlineDescription = task.Description ?? string.Empty;
+                return;
+            }
+        }
+
+        InitializeInlineTaskSelection();
     }
 
-    private void ShowNewEntryDialog()
+    private void IncrementTime()
     {
-        selectedDate = DateTime.Today;
-        AppState.ShowAddEntryPopup();
+        AdjustInlineTime(AppState.Settings.NotificationIntervalMinutes);
+    }
+
+    private void DecrementTime()
+    {
+        AdjustInlineTime(-AppState.Settings.NotificationIntervalMinutes);
+    }
+
+    private void AdjustInlineTime(int minutes)
+    {
+        var dt = ParseInlineDateTimeLocal();
+        inlineDateTimeText = FormatInlineDateTime(dt.AddMinutes(minutes));
+    }
+
+    private async Task AddInlineEntry()
+    {
+        var currentSelection = inlineTaskSelection;
+        var dt = ParseInlineDateTimeLocal();
+        var entry = new TimeEntry
+        {
+            Date = dt.ToString("yyyy-MM-dd"),
+            StartTime = dt.ToString("HH:mm"),
+            Type = inlineTaskType,
+            Ticket = inlineTaskType == TaskType.Break ? null : (string.IsNullOrWhiteSpace(inlineTicket) ? null : inlineTicket),
+            Description = inlineDescription,
+            DayTargetHhmm = AppState.Settings.DefaultTargetHours,
+            PendingForJiraSubmission = true
+        };
+
+        // Keep the selected category/subcategory (task selection) after adding.
+        ApplyInlineTaskSelection(currentSelection);
+        _shouldScroll = true;
+        await AppState.AddNewEntryAsync(entry);
+    }
+
+    private async Task HandleInlineKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await AddInlineEntry();
+        }
     }
 
     private void StartEdit(TimeEntry entry)
@@ -281,14 +406,12 @@ else
     {
         showDataMenu = false;
 
-        await DebugLogAsync($"SubmitPendingTasks started. totalEntries={AppState.AllEntries.Count}, selectedDate={selectedDate:yyyy-MM-dd}");
+        await DebugLogAsync($"SubmitPendingTasks started. totalEntries={AppState.AllEntries.Count}");
 
         Logger.LogInformation(
-            "SubmitPendingTasks started. totalEntries={TotalEntries}, selectedDate={SelectedDate}",
-            AppState.AllEntries.Count,
-            selectedDate.ToString("yyyy-MM-dd"));
+            "SubmitPendingTasks started. totalEntries={TotalEntries}",
+            AppState.AllEntries.Count);
         await DebugLogAsync($"All entries snapshot: {DescribeEntries(AppState.AllEntries)}");
-        await DebugLogAsync($"Displayed entries snapshot: {DescribeEntries(DisplayedEntries)}");
 
         if (string.IsNullOrEmpty(AppState.Settings.JiraBaseUrl) || string.IsNullOrEmpty(AppState.Settings.Pat))
         {
@@ -481,10 +604,38 @@ else
     {
         if (entry.Type == TaskType.Break)
             return ("Break", string.Empty);
+
+        var entryTicket = Normalize(entry.Ticket);
+        var entryDescription = Normalize(entry.Description);
+
+        // 1) Prefer exact ticket+description match.
         var task = AppState.AllTaskEntries.FirstOrDefault(t =>
-            string.Equals(t.Ticket ?? string.Empty, entry.Ticket ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(t.Description ?? string.Empty, entry.Description ?? string.Empty, StringComparison.Ordinal));
-        return (task?.Category ?? entry.Type.ToString(), task?.Subcategory ?? string.Empty);
+            string.Equals(Normalize(t.Ticket), entryTicket, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(Normalize(t.Description), entryDescription, StringComparison.OrdinalIgnoreCase));
+
+        // 2) Fallback: match by ticket only.
+        task ??= AppState.AllTaskEntries.FirstOrDefault(t =>
+            !string.IsNullOrEmpty(entryTicket) &&
+            string.Equals(Normalize(t.Ticket), entryTicket, StringComparison.OrdinalIgnoreCase));
+
+        // 3) Fallback: match by description only.
+        task ??= AppState.AllTaskEntries.FirstOrDefault(t =>
+            !string.IsNullOrEmpty(entryDescription) &&
+            string.Equals(Normalize(t.Description), entryDescription, StringComparison.OrdinalIgnoreCase));
+
+        if (task != null)
+        {
+            return (task.Category ?? string.Empty, task.Subcategory ?? string.Empty);
+        }
+
+        // Avoid showing hardcoded "Ticket" when no task metadata can be resolved.
+        var category = entry.Type == TaskType.Ticket ? string.Empty : entry.Type.ToString();
+        return (category, string.Empty);
+    }
+
+    private static string Normalize(string? value)
+    {
+        return (value ?? string.Empty).Trim();
     }
 
     private static string DescribeEntries(IEnumerable<TimeEntry> entries)
@@ -499,13 +650,68 @@ else
         return list.Count == 0 ? "<none>" : string.Join(" || ", list);
     }
 
-    private static string FormatTime(string? time)
+    private DateTime ParseInlineDateTimeLocal()
     {
-        if (string.IsNullOrEmpty(time)) return string.Empty;
-        var parts = time.Split(':');
-        if (parts.Length >= 2)
-            return $"{parts[0]}:{parts[1]}";
-        return time;
+        if (!string.IsNullOrWhiteSpace(inlineDateTimeText))
+        {
+            var parts = inlineDateTimeText.Split(' ');
+            if (parts.Length == 2)
+            {
+                var dateParts = parts[0].Split('.');
+                var timeParts = parts[1].Split(':');
+
+                if (dateParts.Length == 3 && timeParts.Length >= 2 &&
+                    int.TryParse(dateParts[0], out var year) &&
+                    int.TryParse(dateParts[1], out var month) &&
+                    int.TryParse(dateParts[2], out var day) &&
+                    int.TryParse(timeParts[0], out var hour) &&
+                    int.TryParse(timeParts[1], out var minute))
+                {
+                    try
+                    {
+                        return new DateTime(year, month, day, hour, minute, 0);
+                    }
+                    catch
+                    {
+                        // Fall through to fallback rounding
+                    }
+                }
+            }
+        }
+
+        var fallback = RoundToNearest5(DateTime.Now);
+        inlineDateTimeText = FormatInlineDateTime(fallback);
+        return fallback;
+    }
+
+    private static string FormatInlineDateTime(DateTime dt)
+    {
+        return dt.ToString("yyyy.MM.dd HH:mm");
+    }
+
+    private static string FormatDateTime(string? date, string? time)
+    {
+        if (string.IsNullOrEmpty(date) || string.IsNullOrEmpty(time)) return string.Empty;
+        var dp = date.Split('-');
+        var tp = time.Split(':');
+        if (dp.Length >= 3 && tp.Length >= 2)
+            return $"{dp[0]}.{dp[1]}.{dp[2]} {tp[0]}:{tp[1]}";
+        return $"{date} {time}";
+    }
+
+    private static string FormatTaskOption(TaskEntry task)
+    {
+        var category = task.Category;
+        var subcategory = string.IsNullOrWhiteSpace(task.Subcategory) ? string.Empty : $" / {task.Subcategory}";
+        var ticket = string.IsNullOrWhiteSpace(task.Ticket) ? string.Empty : $" ({task.Ticket})";
+        return $"{category}{subcategory}{ticket}";
+    }
+
+    private static DateTime RoundToNearest5(DateTime dt)
+    {
+        var minutes = ((dt.Minute + 4) / 5) * 5;
+        var rounded = new DateTime(dt.Year, dt.Month, dt.Day, dt.Hour, 0, 0).AddMinutes(minutes);
+        return rounded;
     }
 
 }
