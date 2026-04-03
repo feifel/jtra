@@ -103,7 +103,8 @@ public class AppState
             Type = type,
             Ticket = type == TaskType.Ticket ? ticket : type == TaskType.Break ? null : GetLinkedTicket(type),
             Description = description,
-            DayTargetHhmm = Settings.DefaultTargetHours
+            DayTargetHhmm = Settings.DefaultTargetHours,
+            PendingForJiraSubmission = true
         };
 
         newEntry.Id = await _indexedDb.AddTimeEntryAsync(newEntry);
@@ -147,7 +148,8 @@ public class AppState
             Type = type,
             Ticket = type == TaskType.Ticket ? ticket : type == TaskType.Break ? null : GetLinkedTicket(type),
             Description = description,
-            DayTargetHhmm = Settings.DefaultTargetHours
+            DayTargetHhmm = Settings.DefaultTargetHours,
+            PendingForJiraSubmission = true
         };
 
         newEntry.Id = await _indexedDb.AddTimeEntryAsync(newEntry);
