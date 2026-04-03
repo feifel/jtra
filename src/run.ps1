@@ -1,26 +1,15 @@
 #!/usr/bin/env pwsh
-# Build and run JTRA on Windows PowerShell.
-# This script publishes the Blazor WASM client and server, copies client files into
-# the server publish wwwroot, then runs the published server.
+# Run previously published JTRA server on Windows PowerShell.
 
 $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$clientDir = Join-Path $scriptDir "JtraClient"
-$serverDir = Join-Path $scriptDir "JtraServer"
-$clientPublishDir = Join-Path $clientDir "bin/BlazorPublish"
-$serverPublishDir = Join-Path $serverDir "bin/ServerPublish"
+$serverPublishDir = Join-Path (Join-Path $scriptDir "JtraServer") "bin/ServerPublish"
+$serverDllPath = Join-Path $serverPublishDir "JtraServer.dll"
 
-Write-Host "Publishing Blazor client (Release)..."
-& dotnet publish (Join-Path $clientDir "JtraClient.csproj") -c Release -o $clientPublishDir --nologo -v quiet
-
-Write-Host "Publishing server (Release)..."
-& dotnet publish (Join-Path $serverDir "JtraServer.csproj") -c Release -o $serverPublishDir --nologo -v quiet
-
-Write-Host "Copying client files to server wwwroot..."
-$serverWwwrootDir = Join-Path $serverPublishDir "wwwroot"
-New-Item -ItemType Directory -Path $serverWwwrootDir -Force | Out-Null
-Copy-Item -Path (Join-Path $clientPublishDir "wwwroot/*") -Destination $serverWwwrootDir -Recurse -Force
+if (-not (Test-Path $serverDllPath)) {
+	throw "Published server not found at '$serverDllPath'. Run ./publish.ps1 first."
+}
 
 Write-Host "Starting published server..."
 Push-Location $serverPublishDir

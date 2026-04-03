@@ -1,25 +1,16 @@
 #!/bin/bash
-# Build and run JTRA
-# This script publishes the Blazor WASM client and server, copies client files into
-# the server publish wwwroot, then runs the published server.
+# Run previously published JTRA server.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLIENT_DIR="$SCRIPT_DIR/JtraClient"
-SERVER_DIR="$SCRIPT_DIR/JtraServer"
-CLIENT_PUBLISH_DIR="$CLIENT_DIR/bin/BlazorPublish"
-SERVER_PUBLISH_DIR="$SERVER_DIR/bin/ServerPublish"
+SERVER_PUBLISH_DIR="$SCRIPT_DIR/JtraServer/bin/ServerPublish"
+SERVER_DLL="$SERVER_PUBLISH_DIR/JtraServer.dll"
 
-echo "Publishing Blazor client (Release)..."
-dotnet publish "$CLIENT_DIR/JtraClient.csproj" -c Release -o "$CLIENT_PUBLISH_DIR" --nologo -v quiet
-
-echo "Publishing server (Release)..."
-dotnet publish "$SERVER_DIR/JtraServer.csproj" -c Release -o "$SERVER_PUBLISH_DIR" --nologo -v quiet
-
-echo "Copying client files to server wwwroot..."
-mkdir -p "$SERVER_PUBLISH_DIR/wwwroot"
-cp -r "$CLIENT_PUBLISH_DIR/wwwroot/." "$SERVER_PUBLISH_DIR/wwwroot/"
+if [ ! -f "$SERVER_DLL" ]; then
+	echo "Published server not found at '$SERVER_DLL'. Run ./publish.sh first." >&2
+	exit 1
+fi
 
 echo "Starting published server..."
 cd "$SERVER_PUBLISH_DIR"

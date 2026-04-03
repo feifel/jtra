@@ -28,8 +28,19 @@
         <a href="" class="reload">Reload</a>
         <a class="dismiss">🗙</a>
     </div>
-    <script src="_framework/blazor.webassembly.js"></script>
+    <script src="_framework/blazor.webassembly.js" autostart="false"></script>
     <script>
+        // Disable integrity checking (SRI hashes get stale during dev rebuilds).
+        // Returning a fetch() Promise bypasses Blazor's integrity validation.
+        Blazor.start({
+            loadBootResource: function (type, name, defaultUri, integrity) {
+                if (type === 'dotnetjs') {
+                    return null; // use default for dotnet.js bootstrap
+                }
+                return fetch(defaultUri, { cache: 'no-cache' });
+            }
+        });
+
         window.indexedDbInterop = {
             db: null,
             dbName: 'JtraDb',
