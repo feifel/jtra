@@ -171,7 +171,7 @@ code {
 
 .entry-row {
     display: grid;
-    grid-template-columns: 80px 100px 100px 1fr 80px 100px;
+    grid-template-columns: 80px 100px 100px 100px 1fr 80px 100px;
     gap: 0.5rem;
     padding: 0.75rem 1rem;
     border-bottom: 1px solid #dee2e6;
@@ -185,6 +185,13 @@ code {
 
 .entry-row:hover {
     background: #f8f9fa;
+}
+
+.entry-row > div {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 .entry-time {

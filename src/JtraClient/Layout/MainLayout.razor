@@ -19,7 +19,7 @@
 
 @if (ShowCheckInPopup)
 {
-    <CheckInPopup OnConfirm="HandleCheckInConfirm" OnSnoozeCallback="HandleSnooze" OnCancel="HandleCancelCheckIn" />
+    <EditEntryDialog Entry="checkInEntry" OnSave="HandleCheckInSave" OnDelete="HandleCheckInDelete" OnClose="HandleCancelCheckIn" />
 }
 
 @code {
@@ -29,6 +29,7 @@
     private bool ShowCheckInPopup => AppState.ShowCheckInPopup;
     private bool _lastPopupState = false;
     private bool _notificationPermissionRequested = false;
+    private TimeEntry checkInEntry = new();
 
     protected override void OnInitialized()
     {
@@ -51,6 +52,11 @@
 
     private void OnAppStateChanged()
     {
+        if (AppState.ShowCheckInPopup && !_lastPopupState)
+        {
+            checkInEntry = BuildCheckInEntry();
+        }
+
         if (AppState.ShowCheckInPopup && !_lastPopupState && AppState.IsTimerTriggeredPopup)
         {
             _ = ShowCheckInNotification();
@@ -64,14 +70,14 @@
         await NotificationService.ShowNotificationAsync("JTRA Check-in", "Time to record your current task!");
     }
 
-    private async Task HandleCheckInConfirm((TaskType type, string? ticket, string? description) args)
+    private async Task HandleCheckInSave(TimeEntry entry)
     {
-        await AppState.ConfirmCheckIn(args.type, args.ticket, args.description);
+        await AppState.ConfirmCheckIn(entry.StartTime, entry.Type, entry.Ticket, entry.Description);
     }
 
-    private async Task HandleCheckInConfirm((string time, TaskType type, string? ticket, string? description) args)
+    private Task HandleCheckInDelete(int id)
     {
-        await AppState.ConfirmCheckIn(args.time, args.type, args.ticket, args.description);
+        return Task.CompletedTask;
     }
 
     private Task HandleCancelCheckIn()
@@ -80,8 +86,33 @@
         return Task.CompletedTask;
     }
 
-    private async Task HandleSnooze(DateTime snoozeUntil)
+    private TimeEntry BuildCheckInEntry()
     {
-        await AppState.SetSnooze(snoozeUntil);
+        var now = DateTime.Now;
+        var rounded = RoundToNearestQuarter(now);
+
+        return new TimeEntry
+        {
+            Date = now.ToString("yyyy-MM-dd"),
+            StartTime = rounded.ToString("HH:mm"),
+            Type = AppState.CurrentTask?.Type ?? TaskType.Ticket,
+            Ticket = AppState.CurrentTask?.Ticket,
+            Description = AppState.CurrentTask?.Description,
+            DayTargetHhmm = AppState.Settings.DefaultTargetHours
+        };
+    }
+
+    private static DateTime RoundToNearestQuarter(DateTime dt)
+    {
+        var minute = dt.Minute;
+        var roundedMinute = (int)Math.Round(minute / 15.0) * 15;
+        var rounded = new DateTime(dt.Year, dt.Month, dt.Day, dt.Hour, 0, 0).AddMinutes(roundedMinute);
+
+        if (rounded.Day != dt.Day)
+        {
+            rounded = new DateTime(dt.Year, dt.Month, dt.Day, 23, 45, 0);
+        }
+
+        return rounded;
     }
 }

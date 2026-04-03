@@ -22,15 +22,17 @@
 
         <div class="form-group">
             <label>Task Type</label>
-            <select @bind="Entry.Type" class="form-control" @onkeydown="HandleKeyDown">
-                @foreach (TaskType type in Enum.GetValues(typeof(TaskType)))
+            <select value="@selectedTaskSelection" @onchange="HandleTaskSelectionChanged" class="form-control" @onkeydown="HandleKeyDown">
+                <option value="@BreakSelectionValue">Break</option>
+                @foreach (var task in AppState.AllTaskEntries.OrderBy(e => e.Category).ThenBy(e => e.Subcategory))
                 {
-                    <option value="@type">@type</option>
+                    <option value="@task.Id">@FormatTaskOption(task)</option>
                 }
+                <option value="@CustomSelectionValue">Custom</option>
             </select>
         </div>
 
-        @if (Entry.Type == TaskType.Ticket)
+        @if (Entry.Type != TaskType.Break)
         {
             <div class="form-group">
                 <label>Ticket</label>
@@ -109,6 +111,10 @@
     private List<string> targetHourOptions = new();
     private bool showTicketPicker;
     private List<TicketCache> favoriteTickets = new();
+    private string selectedTaskSelection = CustomSelectionValue;
+
+    private const string BreakSelectionValue = "__break__";
+    private const string CustomSelectionValue = "__custom__";
 
     protected override void OnInitialized()
     {
@@ -121,6 +127,36 @@
         entryDate = Entry.Date;
         entryStartTime = NormalizeTime(Entry.StartTime);
         entryTargetHours = NormalizeTime(Entry.DayTargetHhmm);
+        selectedTaskSelection = GetTaskSelectionForEntry();
+    }
+
+    private void HandleTaskSelectionChanged(ChangeEventArgs e)
+    {
+        selectedTaskSelection = e.Value?.ToString() ?? CustomSelectionValue;
+
+        if (selectedTaskSelection == BreakSelectionValue)
+        {
+            Entry.Type = TaskType.Break;
+            Entry.Ticket = null;
+            return;
+        }
+
+        if (int.TryParse(selectedTaskSelection, out var taskId))
+        {
+            var task = AppState.AllTaskEntries.FirstOrDefault(t => t.Id == taskId);
+            if (task != null)
+            {
+                Entry.Type = TaskType.Ticket;
+                Entry.Ticket = task.Ticket;
+                Entry.Description = task.Description;
+            }
+            return;
+        }
+
+        if (Entry.Type == TaskType.Break)
+        {
+            Entry.Type = TaskType.Ticket;
+        }
     }
 
     private async Task ShowTicketPicker()
@@ -163,6 +199,28 @@
         if (parts.Length >= 2)
             return $"{parts[0]}:{parts[1]}";
         return time;
+    }
+
+    private string GetTaskSelectionForEntry()
+    {
+        if (Entry.Type == TaskType.Break)
+        {
+            return BreakSelectionValue;
+        }
+
+        var match = AppState.AllTaskEntries.FirstOrDefault(task =>
+            string.Equals(task.Ticket ?? string.Empty, Entry.Ticket ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(task.Description ?? string.Empty, Entry.Description ?? string.Empty, StringComparison.Ordinal));
+
+        return match?.Id.ToString() ?? CustomSelectionValue;
+    }
+
+    private static string FormatTaskOption(TaskEntry task)
+    {
+        var category = task.Category;
+        var subcategory = string.IsNullOrWhiteSpace(task.Subcategory) ? string.Empty : $" / {task.Subcategory}";
+        var ticket = string.IsNullOrWhiteSpace(task.Ticket) ? string.Empty : $" ({task.Ticket})";
+        return $"{category}{subcategory}{ticket}";
     }
 
     private async Task Delete()
