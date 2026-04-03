@@ -1,19 +1,26 @@
 #!/bin/bash
 # Build and run JTRA
-# This script publishes the Blazor WASM client, copies it into the server's wwwroot, then runs the server.
+# This script publishes the Blazor WASM client and server, copies client files into
+# the server publish wwwroot, then runs the published server.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLIENT_DIR="$SCRIPT_DIR/JtraClient"
 SERVER_DIR="$SCRIPT_DIR/JtraServer"
-PUBLISH_DIR="$CLIENT_DIR/bin/BlazorPublish"
+CLIENT_PUBLISH_DIR="$CLIENT_DIR/bin/BlazorPublish"
+SERVER_PUBLISH_DIR="$SERVER_DIR/bin/ServerPublish"
 
-echo "Publishing Blazor client..."
-dotnet publish "$CLIENT_DIR/JtraClient.csproj" -c Debug -o "$PUBLISH_DIR" --nologo -v quiet
+echo "Publishing Blazor client (Release)..."
+dotnet publish "$CLIENT_DIR/JtraClient.csproj" -c Release -o "$CLIENT_PUBLISH_DIR" --nologo -v quiet
+
+echo "Publishing server (Release)..."
+dotnet publish "$SERVER_DIR/JtraServer.csproj" -c Release -o "$SERVER_PUBLISH_DIR" --nologo -v quiet
 
 echo "Copying client files to server wwwroot..."
-cp -r "$PUBLISH_DIR/wwwroot/." "$SERVER_DIR/wwwroot/"
+mkdir -p "$SERVER_PUBLISH_DIR/wwwroot"
+cp -r "$CLIENT_PUBLISH_DIR/wwwroot/." "$SERVER_PUBLISH_DIR/wwwroot/"
 
-echo "Starting server..."
-dotnet run --project "$SERVER_DIR/JtraServer.csproj" --no-build "$@"
+echo "Starting published server..."
+cd "$SERVER_PUBLISH_DIR"
+dotnet "./JtraServer.dll" "$@"
