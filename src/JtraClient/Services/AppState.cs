@@ -144,15 +144,47 @@ public class AppState
 
     public async Task ConfirmCheckIn(string startTime, TaskType type, string? ticket, string? description)
     {
-        var now = DateTime.Now;
-        var entryDate = now.Date;
+        await ConfirmCheckIn(null, startTime, type, ticket, description);
+    }
 
-        if (TimeSpan.TryParse(startTime, out var entryTime))
+    public async Task ConfirmCheckIn(string? selectedDate, string startTime, TaskType type, string? ticket, string? description)
+    {
+        var now = DateTime.Now;
+        DateTime entryDate;
+
+        if (!string.IsNullOrWhiteSpace(selectedDate))
         {
-            var entryDateTime = entryDate.Add(entryTime);
-            if (entryDateTime.TimeOfDay < now.TimeOfDay - TimeSpan.FromMinutes(5))
+            var parts = selectedDate.Split('-');
+            if (parts.Length == 3
+                && int.TryParse(parts[0], out var year)
+                && int.TryParse(parts[1], out var month)
+                && int.TryParse(parts[2], out var day))
             {
-                entryDate = entryDate.AddDays(1);
+                try
+                {
+                    entryDate = new DateTime(year, month, day);
+                }
+                catch
+                {
+                    entryDate = now.Date;
+                }
+            }
+            else
+            {
+                entryDate = now.Date;
+            }
+        }
+        else
+        {
+            entryDate = now.Date;
+
+            if (TimeSpan.TryParse(startTime, out var entryTime))
+            {
+                var entryDateTime = entryDate.Add(entryTime);
+                if (entryDateTime.TimeOfDay < now.TimeOfDay - TimeSpan.FromMinutes(5))
+                {
+                    entryDate = entryDate.AddDays(1);
+                }
             }
         }
 
@@ -285,11 +317,7 @@ public class AppState
             AllEntries[index] = entry;
         }
 
-        var todayIndex = TodayEntries.FindIndex(e => e.Id == entry.Id);
-        if (todayIndex >= 0)
-        {
-            TodayEntries[todayIndex] = entry;
-        }
+        RebuildTodayEntries();
 
         await RecalculateAllEntriesAsync();
         NotifyStateChanged();
@@ -299,10 +327,7 @@ public class AppState
     {
         entry.Id = await _indexedDb.AddTimeEntryAsync(entry);
         AllEntries.Add(entry);
-        if (entry.Date == DateTime.Today.ToString("yyyy-MM-dd"))
-        {
-            TodayEntries.Add(entry);
-        }
+        RebuildTodayEntries();
         await RecalculateAllEntriesAsync();
         NotifyStateChanged();
     }
@@ -316,7 +341,7 @@ public class AppState
         
         await _indexedDb.DeleteTimeEntryAsync(id);
         AllEntries.RemoveAll(e => e.Id == id);
-        TodayEntries.RemoveAll(e => e.Id == id);
+        RebuildTodayEntries();
         await RecalculateAllEntriesAsync();
         NotifyStateChanged();
     }
@@ -364,10 +389,15 @@ public class AppState
     public async Task RefreshEntriesAsync()
     {
         AllEntries = await _indexedDb.GetTimeEntriesAsync();
-        var today = DateTime.Today.ToString("yyyy-MM-dd");
-        TodayEntries = AllEntries.Where(e => e.Date == today).ToList();
+        RebuildTodayEntries();
         RecalculateTodayStats();
         NotifyStateChanged();
+    }
+
+    private void RebuildTodayEntries()
+    {
+        var today = DateTime.Today.ToString("yyyy-MM-dd");
+        TodayEntries = AllEntries.Where(e => e.Date == today).ToList();
     }
 
     private void CalculateNextCheckIn()

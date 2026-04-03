@@ -7,7 +7,7 @@
         
         <div class="form-group">
             <label>Date</label>
-            <input type="date" value="@entryDate" @onchange="@((ChangeEventArgs e) => entryDate = e.Value?.ToString() ?? "")" class="form-control" @onkeydown="HandleKeyDown" />
+            <input type="date" value="@entryDate" @onchange="HandleDateChanged" class="form-control" @onkeydown="HandleKeyDown" />
         </div>
 
         <div class="form-group">
@@ -157,7 +157,8 @@
             start = DateTime.Now.TimeOfDay;
         }
 
-        var estimated = DateTime.Today.Add(start).AddMinutes(interval);
+        var baseDate = GetSelectedEntryDate();
+        var estimated = baseDate.Add(start).AddMinutes(interval);
         var roundedMinute = ((estimated.Minute + 4) / 5) * 5;
         if (roundedMinute == 60)
         {
@@ -168,12 +169,22 @@
             estimated = new DateTime(estimated.Year, estimated.Month, estimated.Day, estimated.Hour, roundedMinute, 0);
         }
 
-        if (estimated <= DateTime.Now)
+        if (baseDate.Date == DateTime.Today && estimated <= DateTime.Now)
         {
             estimated = estimated.AddDays(1);
         }
 
         return $"{estimated.Hour:D2}:{estimated.Minute:D2}";
+    }
+
+    private void HandleDateChanged(ChangeEventArgs e)
+    {
+        entryDate = e.Value?.ToString() ?? entryDate;
+
+        if (ShowEstimatedEndOption)
+        {
+            selectedEstimatedEndTime = GetDefaultEstimatedEndTime();
+        }
     }
 
     private void HandleStartTimeChanged(ChangeEventArgs e)
@@ -259,13 +270,38 @@
             return null;
         }
 
-        var estimatedEnd = DateTime.Today.Add(selectedTime);
-        if (estimatedEnd <= DateTime.Now)
+        var baseDate = GetSelectedEntryDate();
+        var estimatedEnd = baseDate.Add(selectedTime);
+        if (baseDate.Date == DateTime.Today && estimatedEnd <= DateTime.Now)
         {
             estimatedEnd = estimatedEnd.AddDays(1);
         }
 
         return estimatedEnd >= DateTime.Now ? estimatedEnd : (DateTime?)null;
+    }
+
+    private DateTime GetSelectedEntryDate()
+    {
+        if (!string.IsNullOrWhiteSpace(entryDate))
+        {
+            var parts = entryDate.Split('-');
+            if (parts.Length == 3 &&
+                int.TryParse(parts[0], out var year) &&
+                int.TryParse(parts[1], out var month) &&
+                int.TryParse(parts[2], out var day))
+            {
+                try
+                {
+                    return new DateTime(year, month, day);
+                }
+                catch
+                {
+                    // Fall back to today for invalid date fragments.
+                }
+            }
+        }
+
+        return DateTime.Today;
     }
 
     private static string NormalizeTime(string time)

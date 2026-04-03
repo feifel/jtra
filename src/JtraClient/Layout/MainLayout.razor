@@ -81,7 +81,7 @@
 
     private async Task HandleCheckInSave(TimeEntry entry)
     {
-        await AppState.ConfirmCheckIn(entry.StartTime, entry.Type, entry.Ticket, entry.Description);
+        await AppState.ConfirmCheckIn(entry.Date, entry.StartTime, entry.Type, entry.Ticket, entry.Description);
     }
 
     private Task HandleCheckInDelete(int id)
