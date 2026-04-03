@@ -58,6 +58,45 @@ public class CsvExportService
         return entries;
     }
 
+    public string ExportTasksToCsv(List<TaskEntry> entries)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine("category,subcategory,ticket,description");
+
+        foreach (var entry in entries.OrderBy(e => e.Category).ThenBy(e => e.Subcategory))
+        {
+            sb.AppendLine($"{EscapeCsv(entry.Category)},{EscapeCsv(entry.Subcategory)},{EscapeCsv(entry.Ticket)},{EscapeCsv(entry.Description)}");
+        }
+
+        return sb.ToString();
+    }
+
+    public List<TaskEntry> ImportTasksFromCsv(string csvContent)
+    {
+        var entries = new List<TaskEntry>();
+        var lines = csvContent.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        for (int i = 1; i < lines.Length; i++)
+        {
+            var line = lines[i].Trim();
+            if (string.IsNullOrEmpty(line)) continue;
+
+            var parts = ParseCsvLine(line);
+            if (parts.Length < 4) continue;
+
+            entries.Add(new TaskEntry
+            {
+                Category = parts[0],
+                Subcategory = parts[1],
+                Ticket = parts[2],
+                Description = parts[3]
+            });
+        }
+
+        return entries;
+    }
+
     private static string EscapeCsv(string? value)
     {
         if (string.IsNullOrEmpty(value)) return "";

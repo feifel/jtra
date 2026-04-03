@@ -137,6 +137,79 @@ public class IndexedDbService
         await _jsRuntime.InvokeVoidAsync("indexedDbInterop.saveConnectionState", element);
     }
 
+    public async Task<List<TaskEntry>> GetTaskEntriesAsync()
+    {
+        try
+        {
+            var entries = await InvokeAsync<List<TaskEntry>>("indexedDbInterop.getAllTaskEntries");
+            return entries ?? new List<TaskEntry>();
+        }
+        catch (JSException ex)
+        {
+            _logger.LogWarning(ex, "Task entries store/method unavailable. Returning empty list.");
+            return new List<TaskEntry>();
+        }
+    }
+
+    public async Task<TaskEntry?> GetTaskEntryAsync(int id)
+    {
+        try
+        {
+            return await InvokeAsync<TaskEntry>("indexedDbInterop.getTaskEntry", id);
+        }
+        catch (JSException ex)
+        {
+            _logger.LogWarning(ex, "Task entry retrieval failed for id {Id}", id);
+            return null;
+        }
+    }
+
+    public async Task<int> AddTaskEntryAsync(TaskEntry entry)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(entry, JtraJsonContext.Default.TaskEntry);
+            using var doc = JsonDocument.Parse(json);
+            var dict = doc.RootElement.EnumerateObject()
+                .Where(p => !p.Name.Equals("id", StringComparison.OrdinalIgnoreCase))
+                .ToDictionary(p => p.Name, p => p.Value.Clone());
+            var stripped = JsonSerializer.SerializeToElement(dict);
+            return await _jsRuntime.InvokeAsync<int>("indexedDbInterop.addTaskEntry", stripped);
+        }
+        catch (JSException ex)
+        {
+            _logger.LogError(ex, "Failed to add task entry.");
+            throw;
+        }
+    }
+
+    public async Task UpdateTaskEntryAsync(TaskEntry entry)
+    {
+        try
+        {
+            var element = ToJsonElement(entry, JtraJsonContext.Default.TaskEntry);
+            await _jsRuntime.InvokeVoidAsync("indexedDbInterop.updateTaskEntry", element);
+        }
+        catch (JSException ex)
+        {
+            _logger.LogError(ex, "Failed to update task entry {Id}", entry.Id);
+            throw;
+        }
+    }
+
+    public async Task DeleteTaskEntryAsync(int id)
+    {
+        try
+        {
+            await _jsRuntime.InvokeVoidAsync("indexedDbInterop.deleteTaskEntry", id);
+        }
+        catch (JSException ex)
+        {
+            _logger.LogError(ex, "Failed to delete task entry {Id}", id);
+            throw;
+        }
+    }
+
     public async Task ClearAllDataAsync()
     {
         await _jsRuntime.InvokeVoidAsync("indexedDbInterop.clearAllData");

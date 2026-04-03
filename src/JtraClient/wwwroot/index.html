@@ -44,7 +44,7 @@
         window.indexedDbInterop = {
             db: null,
             dbName: 'JtraDb',
-            dbVersion: 1,
+            dbVersion: 2,
 
             init: function() {
                 return new Promise((resolve, reject) => {
@@ -75,6 +75,12 @@
                         
                         if (!db.objectStoreNames.contains('connection_state')) {
                             db.createObjectStore('connection_state', { keyPath: 'id' });
+                        }
+
+                        if (!db.objectStoreNames.contains('task_entries')) {
+                            const taskStore = db.createObjectStore('task_entries', { keyPath: 'id', autoIncrement: true });
+                            taskStore.createIndex('category', 'category', { unique: false });
+                            taskStore.createIndex('subcategory', 'subcategory', { unique: false });
                         }
                     };
                 });
@@ -143,6 +149,81 @@
                     const request = index.getAll(date);
                     
                     request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            },
+
+            getAllTaskEntries: function() {
+                return new Promise((resolve, reject) => {
+                    if (!this.db || !this.db.objectStoreNames.contains('task_entries')) {
+                        resolve([]);
+                        return;
+                    }
+                    const transaction = this.db.transaction(['task_entries'], 'readonly');
+                    const store = transaction.objectStore('task_entries');
+                    const request = store.getAll();
+
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            },
+
+            getTaskEntry: function(id) {
+                return new Promise((resolve, reject) => {
+                    if (!this.db || !this.db.objectStoreNames.contains('task_entries')) {
+                        resolve(null);
+                        return;
+                    }
+                    const transaction = this.db.transaction(['task_entries'], 'readonly');
+                    const store = transaction.objectStore('task_entries');
+                    const request = store.get(id);
+
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            },
+
+            addTaskEntry: function(entry) {
+                return new Promise((resolve, reject) => {
+                    if (!this.db || !this.db.objectStoreNames.contains('task_entries')) {
+                        reject(new Error('task_entries store is unavailable. Reload the app to apply DB migration.'));
+                        return;
+                    }
+                    const transaction = this.db.transaction(['task_entries'], 'readwrite');
+                    const store = transaction.objectStore('task_entries');
+                    const request = store.add(entry);
+
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            },
+
+            updateTaskEntry: function(entry) {
+                return new Promise((resolve, reject) => {
+                    if (!this.db || !this.db.objectStoreNames.contains('task_entries')) {
+                        reject(new Error('task_entries store is unavailable. Reload the app to apply DB migration.'));
+                        return;
+                    }
+                    const transaction = this.db.transaction(['task_entries'], 'readwrite');
+                    const store = transaction.objectStore('task_entries');
+                    const request = store.put(entry);
+
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+            },
+
+            deleteTaskEntry: function(id) {
+                return new Promise((resolve, reject) => {
+                    if (!this.db || !this.db.objectStoreNames.contains('task_entries')) {
+                        reject(new Error('task_entries store is unavailable. Reload the app to apply DB migration.'));
+                        return;
+                    }
+                    const transaction = this.db.transaction(['task_entries'], 'readwrite');
+                    const store = transaction.objectStore('task_entries');
+                    const request = store.delete(id);
+
+                    request.onsuccess = () => resolve();
                     request.onerror = () => reject(request.error);
                 });
             },
@@ -265,9 +346,9 @@
 
             clearAllData: function() {
                 return new Promise((resolve, reject) => {
-                    const transaction = this.db.transaction(['time_entries', 'settings', 'ticket_cache', 'connection_state'], 'readwrite');
+                    const transaction = this.db.transaction(['time_entries', 'settings', 'ticket_cache', 'connection_state', 'task_entries'], 'readwrite');
                     
-                    const promises = ['time_entries', 'settings', 'ticket_cache', 'connection_state'].map(storeName => {
+                    const promises = ['time_entries', 'settings', 'ticket_cache', 'connection_state', 'task_entries'].map(storeName => {
                         return new Promise((res, rej) => {
                             const store = transaction.objectStore(storeName);
                             const request = store.clear();

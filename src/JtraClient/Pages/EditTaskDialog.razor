@@ -1,0 +1,160 @@
+@inject AppState AppState
+
+<div class="popup-overlay" @onclick="Close">
+    <div class="popup-content" @onclick:stopPropagation="true">
+        <h3>@(Entry.Id > 0 ? "Edit Task" : "Add Task")</h3>
+        
+        <div class="form-group">
+            <label>Category <span style="color: red;">*</span></label>
+            <div class="editable-dropdown">
+                <input type="text" 
+                    list="categoryList" 
+                    @bind="Entry.Category" 
+                    @bind:event="oninput" 
+                    @bind:after="AutoSaveAsync"
+                    class="form-control" 
+                    placeholder="Category (required)"
+                    @onkeydown="HandleKeyDown" 
+                    style="margin-bottom: 0;" />
+                <datalist id="categoryList">
+                    @foreach (var cat in GetUniqueCategories())
+                    {
+                        <option value="@cat" />
+                    }
+                </datalist>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Subcategory</label>
+            <div class="editable-dropdown">
+                <input type="text" 
+                    list="subcategoryList" 
+                    @bind="Entry.Subcategory" 
+                    @bind:event="oninput" 
+                    @bind:after="AutoSaveAsync"
+                    class="form-control" 
+                    placeholder="Subcategory (optional)"
+                    @onkeydown="HandleKeyDown"
+                    style="margin-bottom: 0;" />
+                <datalist id="subcategoryList">
+                    @foreach (var subcat in GetUniqueSubcategories())
+                    {
+                        <option value="@subcat" />
+                    }
+                </datalist>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Ticket</label>
+            <input type="text" @bind="Entry.Ticket" @bind:event="oninput" @bind:after="AutoSaveAsync" class="form-control" placeholder="JIRA-123 (optional)" @onkeydown="HandleKeyDown" />
+        </div>
+
+        <div class="form-group">
+            <label>Description</label>
+            <input type="text" @bind="Entry.Description" @bind:event="oninput" @bind:after="AutoSaveAsync" class="form-control" placeholder="Description (optional)" maxlength="100" @onkeydown="HandleKeyDown" />
+        </div>
+
+        <div class="popup-actions">
+            <button class="btn btn-primary" @onclick="Confirm">Confirm</button>
+            @if (Entry.Id > 0)
+            {
+                <button class="btn btn-danger" @onclick="Delete">Delete</button>
+            }
+            <button class="btn btn-secondary" @onclick="Close">Cancel</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public TaskEntry Entry { get; set; } = new();
+    [Parameter] public EventCallback<TaskEntry> OnSave { get; set; }
+    [Parameter] public EventCallback<int> OnDelete { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private IEnumerable<string> GetUniqueCategories()
+    {
+        return AppState.AllTaskEntries
+            .Where(e => !string.IsNullOrEmpty(e.Category))
+            .Select(e => e.Category)
+            .Distinct()
+            .OrderBy(c => c);
+    }
+
+    private IEnumerable<string> GetUniqueSubcategories()
+    {
+        return AppState.AllTaskEntries
+            .Where(e => !string.IsNullOrWhiteSpace(e.Subcategory))
+            .Select(e => e.Subcategory!)
+            .Distinct()
+            .OrderBy(s => s);
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await Confirm();
+        }
+        else if (e.Key == "Escape")
+        {
+            await Close();
+        }
+    }
+
+    private async Task Confirm()
+    {
+        if (await Save())
+        {
+            await Close();
+        }
+    }
+
+    private async Task<bool> Save()
+    {
+        if (string.IsNullOrWhiteSpace(Entry.Category))
+        {
+            return false; // Category is mandatory
+        }
+        
+        await OnSave.InvokeAsync(Entry);
+        _lastSavedSignature = BuildSignature();
+        return true;
+    }
+
+    private async Task Delete()
+    {
+        if (Entry.Id > 0)
+        {
+            await OnDelete.InvokeAsync(Entry.Id);
+        }
+    }
+
+    private async Task Close()
+    {
+        await OnClose.InvokeAsync();
+    }
+
+    private string _lastSavedSignature = string.Empty;
+
+    private async Task AutoSaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Entry.Category))
+        {
+            return;
+        }
+
+        var signature = BuildSignature();
+        if (signature == _lastSavedSignature)
+        {
+            return;
+        }
+
+        await OnSave.InvokeAsync(Entry);
+        _lastSavedSignature = signature;
+    }
+
+    private string BuildSignature()
+        => $"{Entry.Id}|{Entry.Category}|{Entry.Subcategory}|{Entry.Ticket}|{Entry.Description}";
+}

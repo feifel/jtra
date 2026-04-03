@@ -16,24 +16,16 @@ builder.Services.AddScoped<IndexedDbService>();
 builder.Services.AddScoped<CsvExportService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddSingleton<AppState>();
-builder.Services.AddSingleton<TimerHubClient>();
 builder.Services.AddSingleton<FallbackTimerService>();
 
 var host = builder.Build();
 
 var appState = host.Services.GetRequiredService<AppState>();
-var timerHub = host.Services.GetRequiredService<TimerHubClient>();
 var fallbackTimer = host.Services.GetRequiredService<FallbackTimerService>();
 
-appState.WireUpTimerHub(timerHub);
 appState.WireUpFallbackTimer(fallbackTimer);
-appState.OnServerConnectionChanged += connected =>
-{
-    if (connected) fallbackTimer.Stop();
-    else fallbackTimer.Start();
-};
 
 await appState.InitializeAsync();
-await timerHub.StartAsync(serverUrl);
+fallbackTimer.Start();
 
 await host.RunAsync();

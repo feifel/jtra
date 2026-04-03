@@ -11,6 +11,8 @@ namespace JtraClient.Services;
 [JsonSerializable(typeof(TicketCache))]
 [JsonSerializable(typeof(List<TicketCache>))]
 [JsonSerializable(typeof(ConnectionState))]
+[JsonSerializable(typeof(TaskEntry))]
+[JsonSerializable(typeof(List<TaskEntry>))]
 [JsonSerializable(typeof(int))]
 [JsonSerializable(typeof(string))]
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]

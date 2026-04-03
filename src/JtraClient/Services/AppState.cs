@@ -12,6 +12,7 @@ public class AppState
 
     public List<TimeEntry> TodayEntries { get; private set; } = new();
     public List<TimeEntry> AllEntries { get; private set; } = new();
+    public List<TaskEntry> AllTaskEntries { get; private set; } = new();
     public AppSettings Settings { get; private set; } = new();
     
     public TimeEntry? CurrentTask { get; private set; }
@@ -48,6 +49,15 @@ public class AppState
         
         Settings = await _indexedDb.GetSettingsAsync();
         AllEntries = await _indexedDb.GetTimeEntriesAsync();
+        try
+        {
+            AllTaskEntries = await _indexedDb.GetTaskEntriesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Task entries could not be loaded during initialization.");
+            AllTaskEntries = new List<TaskEntry>();
+        }
         
         var today = DateTime.Today.ToString("yyyy-MM-dd");
         TodayEntries = AllEntries.Where(e => e.Date == today).ToList();
@@ -296,6 +306,33 @@ public class AppState
     {
         Settings = settings;
         await _indexedDb.SaveSettingsAsync(settings);
+        NotifyStateChanged();
+    }
+
+    public async Task UpdateTaskEntryAsync(TaskEntry entry)
+    {
+        await _indexedDb.UpdateTaskEntryAsync(entry);
+
+        var index = AllTaskEntries.FindIndex(e => e.Id == entry.Id);
+        if (index >= 0)
+        {
+            AllTaskEntries[index] = entry;
+        }
+
+        NotifyStateChanged();
+    }
+
+    public async Task AddNewTaskEntryAsync(TaskEntry entry)
+    {
+        entry.Id = await _indexedDb.AddTaskEntryAsync(entry);
+        AllTaskEntries.Add(entry);
+        NotifyStateChanged();
+    }
+
+    public async Task DeleteTaskEntryAsync(int id)
+    {
+        await _indexedDb.DeleteTaskEntryAsync(id);
+        AllTaskEntries.RemoveAll(e => e.Id == id);
         NotifyStateChanged();
     }
 
