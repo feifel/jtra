@@ -11,6 +11,9 @@ SERVER_DIR="$SCRIPT_DIR/JtraServer"
 CLIENT_PUBLISH_DIR="$CLIENT_DIR/bin/BlazorPublish"
 SERVER_PUBLISH_DIR="$SERVER_DIR/bin/ServerPublish"
 
+echo "Cleaning stale framework files..."
+rm -rf "$SERVER_DIR/wwwroot/_framework"
+
 echo "Publishing Blazor client (Release)..."
 dotnet publish "$CLIENT_DIR/JtraClient.csproj" -c Release -o "$CLIENT_PUBLISH_DIR" --nologo -v quiet
 
