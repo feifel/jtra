@@ -1,0 +1,350 @@
+@page "/charts"
+@implements IDisposable
+
+<PageTitle>JTRA - Charts</PageTitle>
+
+<div class="entries-header">
+    <h2>Charts</h2>
+</div>
+
+<div class="charts-filter-bar">
+    <div class="form-group charts-filter-group">
+        <label>Label</label>
+        <input type="text" class="form-control" @bind="chartLabel" @bind:event="oninput" placeholder="Chart title" />
+    </div>
+
+    <div class="form-group charts-filter-group">
+        <label>Range</label>
+        <div style="position: relative; display: inline-block;">
+            <button class="btn btn-outline-secondary" @onclick="ToggleDateRangeMenu" @onclick:stopPropagation="true">@selectedRangeName &#9660;</button>
+            @if (showDateRangeMenu)
+            {
+                <div class="dropdown-menu show" style="display: block; position: absolute; left: 0; top: 100%; z-index: 1000; min-width: 160px;">
+                    @foreach (var range in DateRanges)
+                    {
+                        <button class="dropdown-item" @onclick="() => SelectDateRange(range.Name, range.From, range.To)" @onclick:stopPropagation="true">@range.Name</button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="form-group charts-filter-group">
+        <label>From</label>
+        <input type="date" class="form-control" style="width: 150px;" value="@fromDate.ToString("yyyy-MM-dd")" @onchange="OnFromDateChanged" />
+    </div>
+
+    <div class="form-group charts-filter-group">
+        <label>To</label>
+        <input type="date" class="form-control" style="width: 150px;" value="@toDate.ToString("yyyy-MM-dd")" @onchange="OnToDateChanged" />
+    </div>
+
+    <div class="form-group charts-filter-group">
+        <label>Excluded Tasks</label>
+        <div style="position: relative; display: inline-block;">
+            <button class="btn btn-outline-secondary" @onclick="ToggleExcludeMenu" @onclick:stopPropagation="true">
+                @(excludedTasks.Count == 0 ? "None" : string.Join(", ", excludedTasks)) &#9660;
+            </button>
+            @if (showExcludeMenu)
+            {
+                <div class="dropdown-menu show" style="display: block; position: absolute; left: 0; top: 100%; z-index: 1000; min-width: 200px; padding: 0.5rem;">
+                    @foreach (var task in GetAllTaskLabels())
+                    {
+                        var taskLabel = task;
+                        <div class="form-check" style="padding: 0.25rem 0.75rem;">
+                            <input class="form-check-input" type="checkbox"
+                                   id="excl-@taskLabel"
+                                   checked="@excludedTasks.Contains(taskLabel)"
+                                   @onchange="() => ToggleExcludedTask(taskLabel)" />
+                            <label class="form-check-label" for="excl-@taskLabel">@taskLabel</label>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (sunburstData.Count == 0)
+{
+    <p class="no-entries">No data for the selected range and filters.</p>
+}
+else
+{
+    <div class="charts-container" @onclick="CloseMenus">
+        <div style="width: 100%;">
+            <EChart Options="@chartOptions" Width="auto" Height="600px" />
+        </div>
+    </div>
+}
+
+@code {
+    [Inject] private AppState AppState { get; set; } = default!;
+
+    private string chartLabel = "Time Distribution";
+    private DateTime fromDate = DateTime.Today.AddDays(-6);
+    private DateTime toDate = DateTime.Today;
+    private string selectedRangeName = "Last 7 Days";
+    private bool showDateRangeMenu = false;
+    private bool showExcludeMenu = false;
+    private HashSet<string> excludedTasks = new(StringComparer.OrdinalIgnoreCase) { "Break", "Holiday / Public" };
+    private List<SunburstSeriesData> sunburstData = new();
+    private ChartOptions chartOptions = new();
+
+    private record DateRangeOption(string Name, DateTime From, DateTime To);
+
+    private IEnumerable<DateRangeOption> DateRanges => BuildDateRanges();
+
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += OnAppStateChanged;
+        RecomputeChart();
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= OnAppStateChanged;
+    }
+
+    private void OnAppStateChanged()
+    {
+        RecomputeChart();
+        StateHasChanged();
+    }
+
+    private void ToggleDateRangeMenu()
+    {
+        showDateRangeMenu = !showDateRangeMenu;
+        showExcludeMenu = false;
+    }
+
+    private void ToggleExcludeMenu()
+    {
+        showExcludeMenu = !showExcludeMenu;
+        showDateRangeMenu = false;
+    }
+
+    private void CloseMenus()
+    {
+        showDateRangeMenu = false;
+        showExcludeMenu = false;
+    }
+
+    private void SelectDateRange(string name, DateTime from, DateTime to)
+    {
+        selectedRangeName = name;
+        fromDate = from;
+        toDate = to;
+        showDateRangeMenu = false;
+        RecomputeChart();
+    }
+
+    private void OnFromDateChanged(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var d))
+        {
+            fromDate = d;
+            selectedRangeName = "Custom";
+            RecomputeChart();
+        }
+    }
+
+    private void OnToDateChanged(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var d))
+        {
+            toDate = d;
+            selectedRangeName = "Custom";
+            RecomputeChart();
+        }
+    }
+
+    private void ToggleExcludedTask(string label)
+    {
+        if (!excludedTasks.Remove(label))
+            excludedTasks.Add(label);
+        RecomputeChart();
+    }
+
+    private IEnumerable<string> GetAllTaskLabels()
+    {
+        var labels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in AppState.AllEntries)
+        {
+            var (cat, sub) = ResolveLabels(entry);
+            labels.Add(BuildLabel(cat, sub));
+        }
+        return labels.OrderBy(l => l);
+    }
+
+    private void RecomputeChart()
+    {
+        var fromStr = fromDate.ToString("yyyy-MM-dd");
+        var toStr = toDate.ToString("yyyy-MM-dd");
+
+        var filtered = AppState.AllEntries
+            .Where(e => string.Compare(e.Date, fromStr, StringComparison.Ordinal) >= 0
+                     && string.Compare(e.Date, toStr, StringComparison.Ordinal) <= 0)
+            .ToList();
+
+        var ordered = AppState.AllEntries
+            .OrderBy(e => e.Date)
+            .ThenBy(e => DurationCalculator.GetStartMinutesOrMax(e.StartTime))
+            .ThenBy(e => e.StartTime)
+            .ThenBy(e => e.Id)
+            .ToList();
+
+        var catSubMinutes = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var entry in filtered)
+        {
+            var (cat, sub) = ResolveLabels(entry);
+            var label = BuildLabel(cat, sub);
+
+            if (excludedTasks.Contains(label))
+                continue;
+
+            var durationMinutes = DurationCalculator.CalculateDurationMinutes(ordered, entry);
+            if (durationMinutes <= 0)
+                continue;
+
+            var catKey = string.IsNullOrEmpty(cat) ? "(Unknown)" : cat;
+            var subKey = sub;
+
+            if (!catSubMinutes.TryGetValue(catKey, out var subDict))
+            {
+                subDict = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                catSubMinutes[catKey] = subDict;
+            }
+
+            if (!subDict.TryGetValue(subKey, out var existing))
+                subDict[subKey] = durationMinutes;
+            else
+                subDict[subKey] = existing + durationMinutes;
+        }
+
+        sunburstData = catSubMinutes
+            .OrderByDescending(kv => kv.Value.Values.Sum())
+            .Select(kv =>
+            {
+                var subEntries = kv.Value
+                    .OrderByDescending(s => s.Value)
+                    .ToList();
+
+                if (subEntries.Count == 1 && string.IsNullOrEmpty(subEntries[0].Key))
+                {
+                    return new SunburstSeriesData
+                    {
+                        Name = kv.Key,
+                        Value = subEntries[0].Value
+                    };
+                }
+
+                var children = subEntries
+                    .Where(s => !string.IsNullOrEmpty(s.Key))
+                    .Select(s => new SunburstSeriesData { Name = s.Key, Value = s.Value })
+                    .ToList();
+
+                var unknownMinutes = subEntries
+                    .Where(s => string.IsNullOrEmpty(s.Key))
+                    .Sum(s => s.Value);
+
+                if (unknownMinutes > 0)
+                    children.Add(new SunburstSeriesData { Name = "(Other)", Value = unknownMinutes });
+
+                return new SunburstSeriesData
+                {
+                    Name = kv.Key,
+                    Children = children
+                };
+            })
+            .ToList();
+
+        chartOptions = new ChartOptions
+        {
+            Title = new()
+            {
+                Text = chartLabel,
+                Left = "center"
+            },
+            Tooltip = new()
+            {
+                Trigger = TooltipTrigger.Item,
+                Formatter = new JavascriptFunction(@"function(params) {
+                    var mins = params.value;
+                    if (!mins) return params.name;
+                    var h = Math.floor(mins / 60);
+                    var m = mins % 60;
+                    var time = (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+                    return params.name + '<br/>' + time + ' (' + params.percent + '%)';
+                }")
+            },
+            Series = new()
+            {
+                new SunburstSeries
+                {
+                    Data = sunburstData,
+                    Radius = new CircleRadius(0, "90%"),
+                    Label = new() { Rotate = "radial" }
+                }
+            }
+        };
+    }
+
+    private (string Category, string Subcategory) ResolveLabels(TimeEntry entry)
+    {
+        if (entry.Type == TaskType.Break)
+            return ("Break", string.Empty);
+
+        var entryTicket = Normalize(entry.Ticket);
+        var entryDescription = Normalize(entry.Description);
+
+        var task = AppState.AllTaskEntries.FirstOrDefault(t =>
+            string.Equals(Normalize(t.Ticket), entryTicket, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(Normalize(t.Description), entryDescription, StringComparison.OrdinalIgnoreCase));
+
+        task ??= AppState.AllTaskEntries.FirstOrDefault(t =>
+            !string.IsNullOrEmpty(entryTicket) &&
+            string.Equals(Normalize(t.Ticket), entryTicket, StringComparison.OrdinalIgnoreCase));
+
+        task ??= AppState.AllTaskEntries.FirstOrDefault(t =>
+            !string.IsNullOrEmpty(entryDescription) &&
+            string.Equals(Normalize(t.Description), entryDescription, StringComparison.OrdinalIgnoreCase));
+
+        if (task != null)
+            return (task.Category ?? string.Empty, task.Subcategory ?? string.Empty);
+
+        var category = entry.Type == TaskType.Ticket ? string.Empty : entry.Type.ToString();
+        return (category, string.Empty);
+    }
+
+    private static string BuildLabel(string category, string subcategory)
+    {
+        if (string.IsNullOrEmpty(subcategory))
+            return string.IsNullOrEmpty(category) ? "(Unknown)" : category;
+        return $"{category} / {subcategory}";
+    }
+
+    private static string Normalize(string? value) => (value ?? string.Empty).Trim();
+
+    private static IEnumerable<DateRangeOption> BuildDateRanges()
+    {
+        var today = DateTime.Today;
+        var dow = (int)today.DayOfWeek;
+        var mondayOffset = dow == 0 ? -6 : -(dow - 1);
+
+        return new[]
+        {
+            new DateRangeOption("Today", today, today),
+            new DateRangeOption("Yesterday", today.AddDays(-1), today.AddDays(-1)),
+            new DateRangeOption("Last 7 Days", today.AddDays(-6), today),
+            new DateRangeOption("This Week", today.AddDays(mondayOffset), today),
+            new DateRangeOption("Last Week", today.AddDays(mondayOffset - 7), today.AddDays(mondayOffset - 1)),
+            new DateRangeOption("Last 2 Weeks", today.AddDays(mondayOffset - 7), today),
+            new DateRangeOption("This Month", new DateTime(today.Year, today.Month, 1), today),
+            new DateRangeOption("Last Month", new DateTime(today.Year, today.Month, 1).AddMonths(-1), new DateTime(today.Year, today.Month, 1).AddDays(-1)),
+            new DateRangeOption("This Year", new DateTime(today.Year, 1, 1), today),
+            new DateRangeOption("Last Year", new DateTime(today.Year - 1, 1, 1), new DateTime(today.Year - 1, 12, 31)),
+        };
+    }
+}
