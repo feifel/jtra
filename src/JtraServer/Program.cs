@@ -42,6 +42,9 @@ app.MapHub<TimerHub>("/timerHub");
 
 app.MapJiraProxy();
 
+var backupFolderPath = builder.Configuration["BackupFolderPath"] ?? "./backups";
+app.MapBackup(backupFolderPath);
+
 app.MapFallbackToFile("index.html");
 
 app.Run();
