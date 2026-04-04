@@ -303,16 +303,6 @@ code {
     cursor: default;
 }
 
-.entry-row.entry-default {
-    cursor: default;
-    color: #6c757d;
-    font-style: italic;
-}
-
-.entry-row.entry-default:hover {
-    background: transparent;
-}
-
 .entry-row:last-child {
     border-bottom: none;
 }

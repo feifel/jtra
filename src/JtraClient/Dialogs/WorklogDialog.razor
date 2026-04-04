@@ -36,10 +36,6 @@
         <div class="form-group">
             <label>Task Type</label>
             <select value="@selectedTaskSelection" @onchange="HandleTaskSelectionChanged" class="form-control" @onkeydown="HandleKeyDown">
-                @foreach (var task in AppState.DefaultTaskEntries)
-                {
-                    <option value="@task.Id">@FormatTaskOption(task)</option>
-                }
                 @foreach (var task in AppState.AllTaskEntries.OrderBy(e => e.Category).ThenBy(e => e.Subcategory))
                 {
                     <option value="@task.Id">@FormatTaskOption(task)</option>
@@ -216,8 +212,7 @@
 
         if (int.TryParse(selectedTaskSelection, out var taskId))
         {
-            var allTasks = AppState.DefaultTaskEntries.Concat(AppState.AllTaskEntries);
-            var task = allTasks.FirstOrDefault(t => t.Id == taskId);
+            var task = AppState.AllTaskEntries.FirstOrDefault(t => t.Id == taskId);
             if (task != null)
             {
                 Entry.Type = task.Category == "Break" ? TaskType.Break : TaskType.Ticket;
@@ -351,11 +346,11 @@
     {
         if (Entry.Type == TaskType.Break)
         {
-            return AppState.DefaultTaskEntries.First(t => t.Category == "Break").Id.ToString();
+            var breakTask = AppState.AllTaskEntries.FirstOrDefault(t => t.Category == "Break");
+            return breakTask?.Id.ToString() ?? CustomSelectionValue;
         }
 
-        var allTasks = AppState.DefaultTaskEntries.Concat(AppState.AllTaskEntries);
-        var match = allTasks.FirstOrDefault(task =>
+        var match = AppState.AllTaskEntries.FirstOrDefault(task =>
             string.Equals(task.Ticket ?? string.Empty, Entry.Ticket ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(task.Description ?? string.Empty, Entry.Description ?? string.Empty, StringComparison.Ordinal));
 

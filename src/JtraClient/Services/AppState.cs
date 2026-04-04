@@ -34,11 +34,12 @@ public class AppState
 
     public IReadOnlyList<TimeEntry> TodayTimeEntries => TodayEntries;
 
-    public static readonly IReadOnlyList<TaskEntry> DefaultTaskEntries = new[]
+    private static readonly IReadOnlyList<TaskEntry> SeedTaskEntries = new[]
     {
-        new TaskEntry { Id = -1, Category = "Break" },
-        new TaskEntry { Id = -2, Category = "Holiday", Subcategory = "Public", Description = "Public Holiday" },
-        new TaskEntry { Id = -3, Category = "Holiday", Subcategory = "Personal", Ticket="TIME-156", Description = "Personal Holiday"}
+        new TaskEntry { Category = "Default"},
+        new TaskEntry { Category = "Break" },
+        new TaskEntry { Category = "Holiday", Subcategory = "Public", Description = "Public Holiday" },
+        new TaskEntry { Category = "Holiday", Subcategory = "Personal", Ticket="TIME-156", Description = "Personal Holiday" },
     };
 
     public AppState(IndexedDbService indexedDb, JiraTicketService jiraTicketService, ILogger<AppState> logger)
@@ -62,7 +63,7 @@ public class AppState
     public async Task InitializeAsync()
     {
         await _indexedDb.InitializeAsync();
-        
+
         Settings = await _indexedDb.GetSettingsAsync();
         AllEntries = await _indexedDb.GetTimeEntriesAsync();
         try
@@ -74,10 +75,12 @@ public class AppState
             _logger.LogWarning(ex, "Task entries could not be loaded during initialization.");
             AllTaskEntries = new List<TaskEntry>();
         }
-        
+
+        await SeedDefaultTaskEntriesAsync();
+
         var today = DateTime.Today.ToString("yyyy-MM-dd");
         TodayEntries = AllEntries.Where(e => e.Date == today).ToList();
-        
+
         var connectionState = await _indexedDb.GetConnectionStateAsync();
         if (connectionState != null)
         {
@@ -97,6 +100,29 @@ public class AppState
 
         CalculateNextCheckIn();
         NotifyStateChanged();
+    }
+
+    private async Task SeedDefaultTaskEntriesAsync()
+    {
+        foreach (var seed in SeedTaskEntries)
+        {
+            var exists = AllTaskEntries.Any(e =>
+                string.Equals(e.Category, seed.Category, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(e.Subcategory ?? string.Empty, seed.Subcategory ?? string.Empty, StringComparison.OrdinalIgnoreCase));
+
+            if (!exists)
+            {
+                var entry = new TaskEntry
+                {
+                    Category = seed.Category,
+                    Subcategory = seed.Subcategory,
+                    Ticket = seed.Ticket,
+                    Description = seed.Description,
+                };
+                entry.Id = await _indexedDb.AddTaskEntryAsync(entry);
+                AllTaskEntries.Add(entry);
+            }
+        }
     }
 
     private static string SafeParseTime(string? time)
