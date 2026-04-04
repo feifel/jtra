@@ -1,0 +1,270 @@
+@page "/reports"
+@implements IDisposable
+
+@using JtraClient.Services
+@using JtraShared.Models
+@inject AppState AppState
+
+<h3>Monthly Time Report</h3>
+
+<div class="form-group mb-3">
+    <label for="monthSelector">Select Month:</label>
+    <input type="month" id="monthSelector" class="form-control" value="@selectedMonth" @onchange="OnMonthChanged" />
+</div>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Day</th>
+            <th>Expected HH:mm</th>
+            <th>Reported HH:mm</th>
+            <th>Deviation ±HH:mm</th>
+            <th>Reported Days</th>
+            <th>Deviation Days</th>
+        </tr>
+    </thead>
+    <tbody>
+        @if (reportData != null)
+        {
+            @foreach (var item in reportData.DailyReports)
+            {
+                <tr class="@GetRowClass(item)">
+                    <td>@item.Date.ToString("yyyy-MM-dd")</td>
+                    <td>@item.Date.ToString("ddd")</td>
+                    <td>@FormatTimeSpan(item.ExpectedHours)</td>
+                    <td>@FormatTimeSpan(item.ReportedHours)</td>
+                    <td class="@(item.Deviation.TotalMinutes >= 0 ? "text-success" : "text-danger")">@FormatTimeSpan(item.Deviation)</td>
+                    <td>@item.ReportedDays.ToString("F2")</td>
+                    <td class="@(item.DeviationDays >= 0 ? "text-success" : "text-danger")">@item.DeviationDays.ToString("F2")</td>
+                </tr>
+            }
+            <tr class="table-secondary">
+                <td colspan="2"><strong>Totals</strong></td>
+                <td><strong>@FormatTimeSpan(reportData.TotalExpectedHours)</strong></td>
+                <td><strong>@FormatTimeSpan(reportData.TotalReportedHours)</strong></td>
+                <td class="@(reportData.TotalDeviation.TotalMinutes >= 0 ? "text-success" : "text-danger")">
+                    <strong>@FormatTimeSpan(reportData.TotalDeviation)</strong>
+                </td>
+                <td><strong>@reportData.TotalExpectedDays.ToString("F2") / @reportData.TotalReportedDays.ToString("F2")</strong></td>
+                <td class="@(reportData.TotalDeviationDays >= 0 ? "text-success" : "text-danger")">
+                    <strong>@reportData.TotalDeviationDays.ToString("F2")</strong>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private string selectedMonth = DateTime.Now.ToString("yyyy-MM");
+    private ReportData? reportData;
+
+    protected override void OnInitialized()
+    {
+        GenerateReport();
+        AppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+    }
+
+    private void OnMonthChanged(ChangeEventArgs e)
+    {
+        selectedMonth = e.Value?.ToString() ?? DateTime.Now.ToString("yyyy-MM");
+        GenerateReport();
+    }
+
+    private void GenerateReport()
+    {
+        if (!DateTime.TryParseExact(selectedMonth, "yyyy-MM", null, System.Globalization.DateTimeStyles.None, out var reportMonth))
+        {
+            reportMonth = DateTime.Now;
+        }
+
+        reportData = CreateReportData(reportMonth);
+    }
+
+    private ReportData CreateReportData(DateTime reportMonth)
+    {
+        var dailyReports = new List<DailyReport>();
+        var daysInMonth = DateTime.DaysInMonth(reportMonth.Year, reportMonth.Month);
+        
+        var totalExpectedMinutes = 0;
+        var totalReportedMinutes = 0;
+        var totalDeviationMinutes = 0;
+
+        for (int day = 1; day <= daysInMonth; day++)
+        {
+            var date = new DateTime(reportMonth.Year, reportMonth.Month, day);
+            var dateString = date.ToString("yyyy-MM-dd");
+            
+            var expectedMinutes = CalculateExpectedMinutes(date, dateString);
+            var reportedMinutes = CalculateReportedMinutes(dateString);
+            var deviationMinutes = reportedMinutes - expectedMinutes;
+            
+            dailyReports.Add(new DailyReport
+            {
+                Date = date,
+                ExpectedMinutes = expectedMinutes,
+                ReportedMinutes = reportedMinutes,
+                DeviationMinutes = deviationMinutes
+            });
+            
+            totalExpectedMinutes += expectedMinutes;
+            totalReportedMinutes += reportedMinutes;
+            totalDeviationMinutes += deviationMinutes;
+        }
+
+        return new ReportData
+        {
+            DailyReports = dailyReports,
+            TotalExpectedMinutes = totalExpectedMinutes,
+            TotalReportedMinutes = totalReportedMinutes,
+            TotalDeviationMinutes = totalDeviationMinutes
+        };
+    }
+
+    private int CalculateExpectedMinutes(DateTime date, string dateString)
+    {
+        if (date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday)
+        {
+            return 0;
+        }
+
+        if (IsPublicHoliday(dateString))
+        {
+            return 0;
+        }
+
+        return 8 * 60;
+    }
+
+    private int CalculateReportedMinutes(string dateString)
+    {
+        var entries = AppState.AllEntries
+            .Where(e => e.Date == dateString)
+            .OrderBy(e => DurationCalculator.GetStartMinutesOrMax(e.StartTime))
+            .ThenBy(e => e.StartTime)
+            .ThenBy(e => e.Id)
+            .ToList();
+
+        if (entries.Count == 0)
+        {
+            return 0;
+        }
+
+        var totalMinutes = 0;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            
+            if (IsPublicHolidayEntry(entry))
+            {
+                continue;
+            }
+
+            totalMinutes += DurationCalculator.CalculateDurationMinutes(entries, i);
+        }
+
+        return totalMinutes;
+    }
+
+    private bool IsPublicHoliday(string dateString)
+    {
+        var entries = AppState.AllEntries.Where(e => e.Date == dateString).ToList();
+        return entries.Any(IsPublicHolidayEntry);
+    }
+
+    private bool IsPublicHolidayEntry(TimeEntry entry)
+    {
+        var task = FindTaskForEntry(entry);
+        
+        if (task == null)
+        {
+            return false;
+        }
+
+        return string.Equals(task.Category, "Holiday", StringComparison.OrdinalIgnoreCase) 
+            && string.Equals(task.Subcategory, "Public", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private TaskEntry? FindTaskForEntry(TimeEntry entry)
+    {
+        var entryTicket = Normalize(entry.Ticket);
+        var entryDescription = Normalize(entry.Description);
+
+        var task = AppState.AllTaskEntries.FirstOrDefault(t =>
+            string.Equals(Normalize(t.Ticket), entryTicket, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(Normalize(t.Description), entryDescription, StringComparison.OrdinalIgnoreCase));
+
+        task ??= AppState.AllTaskEntries.FirstOrDefault(t =>
+            !string.IsNullOrEmpty(entryTicket) &&
+            string.Equals(Normalize(t.Ticket), entryTicket, StringComparison.OrdinalIgnoreCase));
+
+        task ??= AppState.AllTaskEntries.FirstOrDefault(t =>
+            !string.IsNullOrEmpty(entryDescription) &&
+            string.Equals(Normalize(t.Description), entryDescription, StringComparison.OrdinalIgnoreCase));
+
+        return task;
+    }
+
+    private static string Normalize(string? value)
+    {
+        return (value ?? string.Empty).Trim();
+    }
+
+    private string GetRowClass(DailyReport item)
+    {
+        if (item.Date.DayOfWeek == DayOfWeek.Saturday || item.Date.DayOfWeek == DayOfWeek.Sunday)
+        {
+            return "table-info";
+        }
+        
+        if (IsPublicHoliday(item.Date.ToString("yyyy-MM-dd")))
+        {
+            return "table-warning";
+        }
+        
+        return "";
+    }
+
+    private static string FormatTimeSpan(TimeSpan timeSpan)
+    {
+        var totalMinutes = (int)timeSpan.TotalMinutes;
+        var sign = totalMinutes < 0 ? "-" : "";
+        var absMinutes = Math.Abs(totalMinutes);
+        return $"{sign}{absMinutes / 60:D2}:{absMinutes % 60:D2}";
+    }
+
+    public class DailyReport
+    {
+        public DateTime Date { get; set; }
+        public int ExpectedMinutes { get; set; }
+        public int ReportedMinutes { get; set; }
+        public int DeviationMinutes { get; set; }
+        
+        public TimeSpan ExpectedHours => TimeSpan.FromMinutes(ExpectedMinutes);
+        public TimeSpan ReportedHours => TimeSpan.FromMinutes(ReportedMinutes);
+        public TimeSpan Deviation => TimeSpan.FromMinutes(DeviationMinutes);
+        public double ExpectedDays => ExpectedMinutes / 480.0;
+        public double ReportedDays => ReportedMinutes / 480.0;
+        public double DeviationDays => DeviationMinutes / 480.0;
+    }
+
+    public class ReportData
+    {
+        public List<DailyReport> DailyReports { get; set; } = new();
+        public int TotalExpectedMinutes { get; set; }
+        public int TotalReportedMinutes { get; set; }
+        public int TotalDeviationMinutes { get; set; }
+        
+        public TimeSpan TotalExpectedHours => TimeSpan.FromMinutes(TotalExpectedMinutes);
+        public TimeSpan TotalReportedHours => TimeSpan.FromMinutes(TotalReportedMinutes);
+        public TimeSpan TotalDeviation => TimeSpan.FromMinutes(TotalDeviationMinutes);
+        public double TotalExpectedDays => TotalExpectedMinutes / 480.0;
+        public double TotalReportedDays => TotalReportedMinutes / 480.0;
+        public double TotalDeviationDays => TotalDeviationMinutes / 480.0;
+    }
+}
