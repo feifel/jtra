@@ -32,6 +32,8 @@ public class AppState
     public TimeSpan TodayTarget { get; private set; } = TimeSpan.FromHours(8);
     public TimeSpan TodayDeviation => TodayAccumulated - TodayTarget;
 
+    public IReadOnlyList<TimeEntry> TodayTimeEntries => TodayEntries;
+
     public AppState(IndexedDbService indexedDb, JiraTicketService jiraTicketService, ILogger<AppState> logger)
     {
         _indexedDb = indexedDb;
@@ -343,6 +345,32 @@ public class AppState
         RebuildTodayEntries();
         await RecalculateAllEntriesAsync();
         NotifyStateChanged();
+    }
+
+    public async Task<bool> TryAddEntryWithoutDuplicates(TimeEntry entry, int toleranceMinutes = 5)
+    {
+        if (IsDuplicateEntry(entry, toleranceMinutes))
+        {
+            return false;
+        }
+
+        await AddNewEntryAsync(entry);
+        return true;
+    }
+
+    public bool IsDuplicateEntry(TimeEntry entry, int toleranceMinutes = 5)
+    {
+        if (!TimeSpan.TryParse(entry.StartTime, out var newStart))
+        {
+            return false;
+        }
+
+        return AllEntries.Any(existing =>
+            existing.Date == entry.Date &&
+            existing.Type == entry.Type &&
+            string.Equals(existing.Ticket ?? string.Empty, entry.Ticket ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
+            TimeSpan.TryParse(existing.StartTime, out var existingStart) &&
+            Math.Abs((newStart - existingStart).TotalMinutes) <= toleranceMinutes);
     }
 
     public async Task DeleteEntryAsync(int id)

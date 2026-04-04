@@ -3,7 +3,7 @@
 
 <div class="popup-overlay" @onclick="Close">
     <div class="popup-content" @onclick:stopPropagation="true">
-        <h3>Edit Entry</h3>
+        <h3>@(Entry.Id > 0 ? "Edit Worklog" : "Add Worklog")</h3>
         
         <div class="form-group">
             <label>Date</label>
@@ -70,6 +70,17 @@
             <button class="btn btn-secondary" @onclick="Close">Cancel</button>
         </div>
 
+        @if (showDuplicateWarning)
+        {
+            <div class="alert alert-warning mt-2">
+                A similar entry already exists for this task and time. Save anyway?
+                <div class="mt-1">
+                    <button class="btn btn-sm btn-warning" @onclick="SaveForced">Save Anyway</button>
+                    <button class="btn btn-sm btn-secondary ms-1" @onclick="DismissDuplicateWarning">Cancel</button>
+                </div>
+            </div>
+        }
+
         @if (showTicketPicker)
         {
             <div class="ticket-picker">
@@ -113,6 +124,7 @@
     private string entryStartTime = "09:00";
     private List<string> timeOptions = new();
     private bool showTicketPicker;
+    private bool showDuplicateWarning;
     private List<TicketCache> favoriteTickets = new();
     private string selectedTaskSelection = CustomSelectionValue;
     private string selectedEstimatedEndTime = "09:00";
@@ -255,6 +267,29 @@
     {
         Entry.Date = entryDate;
         Entry.StartTime = NormalizeTime(entryStartTime);
+
+        if (Entry.Id == 0 && AppState.IsDuplicateEntry(Entry))
+        {
+            showDuplicateWarning = true;
+            return;
+        }
+
+        await CommitSave();
+    }
+
+    private async Task SaveForced()
+    {
+        showDuplicateWarning = false;
+        await CommitSave();
+    }
+
+    private void DismissDuplicateWarning()
+    {
+        showDuplicateWarning = false;
+    }
+
+    private async Task CommitSave()
+    {
         await OnSave.InvokeAsync(Entry);
 
         if (ShowEstimatedEndOption)
