@@ -10,7 +10,7 @@
 <div class="charts-filter-bar">
     <div class="form-group charts-filter-group">
         <label>Label</label>
-        <input type="text" class="form-control" @bind="chartLabel" @bind:event="oninput" placeholder="Chart title" />
+        <input type="text" class="form-control" @bind="chartLabel" @bind:event="oninput" @bind:after="OnChartLabelChanged" placeholder="Chart title" />
     </div>
 
     <div class="form-group charts-filter-group">
@@ -73,7 +73,7 @@ else
 {
     <div class="charts-container" @onclick="CloseMenus">
         <div style="width: 100%;">
-            <EChart Options="@chartOptions" Width="auto" Height="600px" />
+            <EChart @ref="chart" Options="@chartOptions" Width="auto" Height="600px" />
         </div>
     </div>
 }
@@ -81,6 +81,7 @@ else
 @code {
     [Inject] private AppState AppState { get; set; } = default!;
 
+    private EChart? chart;
     private string chartLabel = "Time Distribution";
     private DateTime fromDate = DateTime.Today.AddDays(-6);
     private DateTime toDate = DateTime.Today;
@@ -106,10 +107,15 @@ else
         AppState.OnChange -= OnAppStateChanged;
     }
 
-    private void OnAppStateChanged()
+    private async void OnAppStateChanged()
     {
         RecomputeChart();
-        StateHasChanged();
+        await InvokeAsync(async () =>
+        {
+            StateHasChanged();
+            if (chart != null)
+                await chart.UpdateAsync();
+        });
     }
 
     private void ToggleDateRangeMenu()
@@ -130,40 +136,55 @@ else
         showExcludeMenu = false;
     }
 
-    private void SelectDateRange(string name, DateTime from, DateTime to)
+    private async Task SelectDateRange(string name, DateTime from, DateTime to)
     {
         selectedRangeName = name;
         fromDate = from;
         toDate = to;
         showDateRangeMenu = false;
         RecomputeChart();
+        if (chart != null)
+            await chart.UpdateAsync();
     }
 
-    private void OnFromDateChanged(ChangeEventArgs e)
+    private async Task OnFromDateChanged(ChangeEventArgs e)
     {
         if (DateTime.TryParse(e.Value?.ToString(), out var d))
         {
             fromDate = d;
             selectedRangeName = "Custom";
             RecomputeChart();
+            if (chart != null)
+                await chart.UpdateAsync();
         }
     }
 
-    private void OnToDateChanged(ChangeEventArgs e)
+    private async Task OnToDateChanged(ChangeEventArgs e)
     {
         if (DateTime.TryParse(e.Value?.ToString(), out var d))
         {
             toDate = d;
             selectedRangeName = "Custom";
             RecomputeChart();
+            if (chart != null)
+                await chart.UpdateAsync();
         }
     }
 
-    private void ToggleExcludedTask(string label)
+    private async Task ToggleExcludedTask(string label)
     {
         if (!excludedTasks.Remove(label))
             excludedTasks.Add(label);
         RecomputeChart();
+        if (chart != null)
+            await chart.UpdateAsync();
+    }
+
+    private async Task OnChartLabelChanged()
+    {
+        RecomputeChart();
+        if (chart != null)
+            await chart.UpdateAsync();
     }
 
     private IEnumerable<string> GetAllTaskLabels()
