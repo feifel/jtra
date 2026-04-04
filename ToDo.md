@@ -1,20 +1,4 @@
 # TODO
-## Rename Pages
-1. Rename Home.razor to Worklog.razor
-2. Rename TaskTypes.razor to Tasks.razor
-3. Rename TicketsView.razor to Tickets.razor
-4. Rename SettingsView.razor to Settings.razor
-
-## Rename and move Dialogs
-1. Rename EditEntryDialog.razor to Worklog.razer and move it to the Dialogs folder
-2. Rename EditTaskDialog.razor to Task.razer and move it to the Dialogs folder
-
-## Worklog
-1. Add Title and buttons "Add" and "..." similar to Tickets and Tasks page
-2. Remove inlinle-add-row and replace it by moving today-stats to that place
-3. Make sure the EditWorklogDialog has Title "Edit Worklog" or "Add Worklog" depending on the action
-4. When the user tries to add a new entry that is exactly like the one before except the time, then ignore this entry, since it is not needed to have 2 entries for the same task
-5. 
 
 ## Tickets
 1. To add/remove Tickets, implement a Ticket.razor in the Dialog folder
