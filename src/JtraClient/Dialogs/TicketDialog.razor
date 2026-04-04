@@ -1,0 +1,109 @@
+<div class="popup-overlay" @onclick="Close">
+    <div class="popup-content" @onclick:stopPropagation="true">
+        <h3>@(IsNew ? "Add Ticket" : "Edit Ticket")</h3>
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="ticket-feedback ticket-feedback-error">@errorMessage</div>
+        }
+
+        <div class="form-group">
+            <label>Ticket Key <span style="color: red;">*</span></label>
+            @if (IsNew)
+            {
+                <input type="text"
+                       @bind="ticketKey"
+                       @bind:event="oninput"
+                       class="form-control"
+                       placeholder="JIRA-123"
+                       @onkeydown="HandleKeyDown"
+                       disabled="@isSaving" />
+            }
+            else
+            {
+                <input type="text" value="@Entry.TicketKey" class="form-control" readonly />
+            }
+        </div>
+
+        <div class="form-group">
+            <label>Summary</label>
+            <input type="text"
+                   @bind="summary"
+                   @bind:event="oninput"
+                   class="form-control"
+                   placeholder="Ticket summary"
+                   @onkeydown="HandleKeyDown"
+                   disabled="@isSaving" />
+        </div>
+
+        <div class="popup-actions">
+            <button class="btn btn-primary" @onclick="Confirm" disabled="@isSaving">
+                @(isSaving ? "Saving..." : "Confirm")
+            </button>
+            @if (!IsNew)
+            {
+                <button class="btn btn-danger" @onclick="Delete" disabled="@isSaving">Delete</button>
+            }
+            <button class="btn btn-secondary" @onclick="Close" disabled="@isSaving">Cancel</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public TicketCache Entry { get; set; } = new();
+    [Parameter] public EventCallback<(string TicketKey, string Summary)> OnSave { get; set; }
+    [Parameter] public EventCallback<string> OnDelete { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string ticketKey = string.Empty;
+    private string summary = string.Empty;
+    private string? errorMessage;
+    private bool isSaving;
+
+    private bool IsNew => string.IsNullOrEmpty(Entry.TicketKey);
+
+    protected override void OnParametersSet()
+    {
+        ticketKey = Entry.TicketKey;
+        summary = Entry.Summary;
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Confirm();
+        else if (e.Key == "Escape") await Close();
+    }
+
+    private async Task Confirm()
+    {
+        errorMessage = null;
+
+        var key = IsNew ? ticketKey.Trim().ToUpperInvariant() : Entry.TicketKey;
+
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            errorMessage = "Ticket key is required.";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            await OnSave.InvokeAsync((key, summary.Trim()));
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task Delete()
+    {
+        await OnDelete.InvokeAsync(Entry.TicketKey);
+    }
+
+    private async Task Close()
+    {
+        await OnClose.InvokeAsync();
+    }
+}

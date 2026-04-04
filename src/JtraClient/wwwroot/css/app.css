@@ -303,6 +303,16 @@ code {
     cursor: default;
 }
 
+.entry-row.entry-default {
+    cursor: default;
+    color: #6c757d;
+    font-style: italic;
+}
+
+.entry-row.entry-default:hover {
+    background: transparent;
+}
+
 .entry-row:last-child {
     border-bottom: none;
 }
@@ -618,6 +628,10 @@ code {
 .tickets-list .entry-actions {
     display: flex;
     justify-content: flex-end;
+}
+
+.tasks-list .entry-row {
+    grid-template-columns: 165px 110px 90px 1fr;
 }
 
 .entry-last-used {

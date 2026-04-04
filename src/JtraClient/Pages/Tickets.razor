@@ -7,7 +7,7 @@
 <div class="entries-header">
     <h2>Tickets</h2>
     <div class="header-buttons">
-        <button class="btn btn-primary" @onclick="ToggleAddForm">Add</button>
+        <button class="btn btn-primary" @onclick="ShowNewEntryDialog">Add</button>
         <div class="dropdown" style="position: relative; display: inline-block;">
             <button class="btn btn-outline-secondary" @onclick="ToggleDataMenu" @onclick:stopPropagation="true">...</button>
             @if (showDataMenu)
@@ -26,24 +26,6 @@
     </div>
 </div>
 
-@if (showAddForm)
-{
-    <div class="ticket-add-panel">
-        <input type="text" @bind="newTicketKey" @bind:event="oninput" class="form-control" placeholder="JIRA-123" @onkeydown="HandleAddKeyDown" disabled="@isSavingTicket" />
-        <div class="ticket-add-actions">
-            <button class="btn btn-primary" @onclick="AddTicketAsync" disabled="@isSavingTicket">
-                @(isSavingTicket ? "Adding..." : "Add Ticket")
-            </button>
-            <button class="btn btn-secondary" @onclick="CancelAdd" disabled="@isSavingTicket">Cancel</button>
-        </div>
-    </div>
-}
-
-@if (!string.IsNullOrWhiteSpace(feedbackMessage))
-{
-    <div class="ticket-feedback @(feedbackIsError ? "ticket-feedback-error" : "ticket-feedback-success")">@feedbackMessage</div>
-}
-
 @if (cachedTickets.Any())
 {
     <div class="entries-list tickets-list">
@@ -55,7 +37,7 @@
         </div>
         @foreach (var ticket in cachedTickets.OrderByDescending(t => t.LastUsedAt).ThenBy(t => t.TicketKey))
         {
-            <div class="entry-row">
+            <div class="entry-row" @ondblclick="() => StartEdit(ticket)">
                 <div class="entry-ticket">
                     <a href="@GetJiraTicketUrl(ticket.TicketKey)" target="_blank" rel="noopener noreferrer">@ticket.TicketKey</a>
                 </div>
@@ -73,6 +55,11 @@ else
     <p class="no-entries">No tickets yet. Click "Add" to create one.</p>
 }
 
+@if (showEditDialog && editingEntry != null)
+{
+    <TicketDialog Entry="editingEntry" OnSave="SaveEntry" OnDelete="DeleteEntry" OnClose="CloseEditDialog" />
+}
+
 @code {
     [Inject] private AppState AppState { get; set; } = default!;
     [Inject] private IndexedDbService IndexedDb { get; set; } = default!;
@@ -81,12 +68,9 @@ else
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
     private readonly List<TicketCache> cachedTickets = new();
-    private bool showAddForm;
+    private bool showEditDialog;
     private bool showDataMenu;
-    private bool isSavingTicket;
-    private string newTicketKey = string.Empty;
-    private string? feedbackMessage;
-    private bool feedbackIsError;
+    private TicketCache? editingEntry;
     private ElementReference fileInput;
 
     protected override async Task OnInitializedAsync()
@@ -119,26 +103,50 @@ else
             .ThenBy(t => t.TicketKey));
     }
 
-    private void ToggleAddForm()
+    private void ShowNewEntryDialog()
     {
-        showAddForm = !showAddForm;
+        editingEntry = new TicketCache();
+        showEditDialog = true;
         showDataMenu = false;
-
-        if (showAddForm)
-        {
-            ClearFeedback();
-        }
-        else
-        {
-            newTicketKey = string.Empty;
-        }
     }
 
-    private void CancelAdd()
+    private void StartEdit(TicketCache ticket)
     {
-        showAddForm = false;
-        newTicketKey = string.Empty;
-        ClearFeedback();
+        editingEntry = new TicketCache
+        {
+            TicketKey = ticket.TicketKey,
+            Summary = ticket.Summary,
+            UseCount = ticket.UseCount,
+            LastUsedAt = ticket.LastUsedAt
+        };
+        showEditDialog = true;
+    }
+
+    private async Task SaveEntry((string TicketKey, string Summary) args)
+    {
+        var isNew = string.IsNullOrEmpty(editingEntry?.TicketKey) || editingEntry.TicketKey != args.TicketKey;
+
+        await UpsertTicketAsync(new TicketCache
+        {
+            TicketKey = args.TicketKey,
+            Summary = args.Summary,
+            UseCount = isNew ? 1 : (editingEntry?.UseCount ?? 1),
+            LastUsedAt = DateTime.Now
+        });
+
+        await LoadCachedTicketsAsync();
+        showEditDialog = false;
+    }
+
+    private async Task DeleteEntry(string ticketKey)
+    {
+        await DeleteTicketAsync(ticketKey);
+        showEditDialog = false;
+    }
+
+    private void CloseEditDialog()
+    {
+        showEditDialog = false;
     }
 
     private void ToggleDataMenu()
@@ -146,62 +154,10 @@ else
         showDataMenu = !showDataMenu;
     }
 
-    private async Task HandleAddKeyDown(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter")
-        {
-            await AddTicketAsync();
-        }
-    }
-
-    private async Task AddTicketAsync()
-    {
-        ClearFeedback();
-
-        var normalizedTicketKey = NormalizeTicketKey(newTicketKey);
-        if (string.IsNullOrWhiteSpace(normalizedTicketKey))
-        {
-            SetFeedback("Enter a ticket number first.", true);
-            return;
-        }
-
-        isSavingTicket = true;
-
-        try
-        {
-            var summary = await JiraTicketService.GetTicketSummaryAsync(AppState.Settings, normalizedTicketKey);
-            var existing = cachedTickets.FirstOrDefault(t =>
-                string.Equals(t.TicketKey, normalizedTicketKey, StringComparison.OrdinalIgnoreCase));
-
-            await UpsertTicketAsync(new TicketCache
-            {
-                TicketKey = normalizedTicketKey,
-                Summary = summary,
-                UseCount = existing?.UseCount ?? 1,
-                LastUsedAt = DateTime.Now
-            });
-
-            await LoadCachedTicketsAsync();
-
-            newTicketKey = string.Empty;
-            showAddForm = false;
-            SetFeedback(existing == null ? "Ticket added." : "Ticket updated and moved to the top.", false);
-        }
-        catch (Exception ex)
-        {
-            SetFeedback(ex.Message, true);
-        }
-        finally
-        {
-            isSavingTicket = false;
-        }
-    }
-
     private async Task DeleteTicketAsync(string ticketKey)
     {
         await IndexedDb.DeleteCachedTicketAsync(ticketKey);
         await LoadCachedTicketsAsync();
-        ClearFeedback();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -217,7 +173,6 @@ else
 
         await IndexedDb.ClearTicketCacheAsync();
         await LoadCachedTicketsAsync();
-        SetFeedback("All tickets cleared.", false);
     }
 
     private async Task ExportData()
@@ -233,7 +188,6 @@ else
     private async Task ImportData(ChangeEventArgs e)
     {
         showDataMenu = false;
-        ClearFeedback();
 
         var fileContent = await JS.InvokeAsync<string>("readFileContentFromInput", fileInput);
         if (string.IsNullOrEmpty(fileContent))
@@ -242,7 +196,6 @@ else
         }
 
         var importedTickets = CsvExport.ImportTicketsFromCsv(fileContent);
-        var importedCount = 0;
 
         foreach (var ticket in importedTickets)
         {
@@ -252,11 +205,9 @@ else
             }
 
             await UpsertTicketAsync(ticket);
-            importedCount++;
         }
 
         await LoadCachedTicketsAsync();
-        SetFeedback(importedCount == 0 ? "No tickets were imported." : $"Imported {importedCount} ticket(s).", importedCount == 0);
     }
 
     private async Task UpsertTicketAsync(TicketCache ticket)
@@ -318,17 +269,5 @@ else
         }
 
         return new string(chars);
-    }
-
-    private void ClearFeedback()
-    {
-        feedbackMessage = null;
-        feedbackIsError = false;
-    }
-
-    private void SetFeedback(string message, bool isError)
-    {
-        feedbackMessage = message;
-        feedbackIsError = isError;
     }
 }

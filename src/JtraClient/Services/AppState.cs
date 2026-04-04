@@ -34,6 +34,13 @@ public class AppState
 
     public IReadOnlyList<TimeEntry> TodayTimeEntries => TodayEntries;
 
+    public static readonly IReadOnlyList<TaskEntry> DefaultTaskEntries = new[]
+    {
+        new TaskEntry { Id = -1, Category = "Break" },
+        new TaskEntry { Id = -2, Category = "Holiday", Subcategory = "Public", Description = "Public Holiday" },
+        new TaskEntry { Id = -3, Category = "Holiday", Subcategory = "Personal", Ticket="TIME-156", Description = "Personal Holiday"}
+    };
+
     public AppState(IndexedDbService indexedDb, JiraTicketService jiraTicketService, ILogger<AppState> logger)
     {
         _indexedDb = indexedDb;

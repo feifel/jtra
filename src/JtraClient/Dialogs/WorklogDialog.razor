@@ -36,12 +36,14 @@
         <div class="form-group">
             <label>Task Type</label>
             <select value="@selectedTaskSelection" @onchange="HandleTaskSelectionChanged" class="form-control" @onkeydown="HandleKeyDown">
-                <option value="@BreakSelectionValue">Break</option>
+                @foreach (var task in AppState.DefaultTaskEntries)
+                {
+                    <option value="@task.Id">@FormatTaskOption(task)</option>
+                }
                 @foreach (var task in AppState.AllTaskEntries.OrderBy(e => e.Category).ThenBy(e => e.Subcategory))
                 {
                     <option value="@task.Id">@FormatTaskOption(task)</option>
                 }
-                <option value="@CustomSelectionValue">Custom</option>
             </select>
         </div>
 
@@ -131,7 +133,6 @@
     private int? lastEntryId;
     private bool lastShowEstimatedEndOption;
 
-    private const string BreakSelectionValue = "__break__";
     private const string CustomSelectionValue = "__custom__";
 
     protected override void OnInitialized()
@@ -213,21 +214,19 @@
     {
         selectedTaskSelection = e.Value?.ToString() ?? CustomSelectionValue;
 
-        if (selectedTaskSelection == BreakSelectionValue)
-        {
-            Entry.Type = TaskType.Break;
-            Entry.Ticket = null;
-            return;
-        }
-
         if (int.TryParse(selectedTaskSelection, out var taskId))
         {
-            var task = AppState.AllTaskEntries.FirstOrDefault(t => t.Id == taskId);
+            var allTasks = AppState.DefaultTaskEntries.Concat(AppState.AllTaskEntries);
+            var task = allTasks.FirstOrDefault(t => t.Id == taskId);
             if (task != null)
             {
-                Entry.Type = TaskType.Ticket;
+                Entry.Type = task.Category == "Break" ? TaskType.Break : TaskType.Ticket;
                 Entry.Ticket = task.Ticket;
                 Entry.Description = task.Description;
+                if (Entry.Type == TaskType.Break)
+                {
+                    Entry.Ticket = null;
+                }
             }
             return;
         }
@@ -352,10 +351,11 @@
     {
         if (Entry.Type == TaskType.Break)
         {
-            return BreakSelectionValue;
+            return AppState.DefaultTaskEntries.First(t => t.Category == "Break").Id.ToString();
         }
 
-        var match = AppState.AllTaskEntries.FirstOrDefault(task =>
+        var allTasks = AppState.DefaultTaskEntries.Concat(AppState.AllTaskEntries);
+        var match = allTasks.FirstOrDefault(task =>
             string.Equals(task.Ticket ?? string.Empty, Entry.Ticket ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(task.Description ?? string.Empty, Entry.Description ?? string.Empty, StringComparison.Ordinal));
 
