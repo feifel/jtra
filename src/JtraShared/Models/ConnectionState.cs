@@ -1,9 +1,9 @@
 namespace JtraShared.Models;
 
-public class ConnectionState
+public record ConnectionState
 {
-    public string? LastTaskType { get; set; }
-    public string? LastTicket { get; set; }
-    public string? LastDescription { get; set; }
-    public string? LastStartTime { get; set; }
+    public string? LastTaskType { get; init; }
+    public string? LastTicket { get; init; }
+    public string? LastDescription { get; init; }
+    public string? LastStartTime { get; init; }
 }

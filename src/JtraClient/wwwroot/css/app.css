@@ -152,15 +152,7 @@ code {
     gap: 0.5rem;
 }
 
-.date-navigation {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
 
-.date-picker {
-    width: 150px;
-}
 
 .date-navigation {
     display: flex;

@@ -491,33 +491,6 @@
             link.click();
             document.body.removeChild(link);
         };
-
-        window.getSelectedFiles = function() {
-            const input = document.querySelector('input[type="file"]');
-            if (input && input.files && input.files.length > 0) {
-                return Array.from(input.files).map(f => f.name);
-            }
-            return [];
-        };
-
-        window.readFileContent = function() {
-            return new Promise((resolve, reject) => {
-                const input = document.querySelector('input[type="file"]');
-                if (!input || !input.files || input.files.length === 0) {
-                    resolve(null);
-                    return;
-                }
-                const file = input.files[0];
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    resolve(e.target.result);
-                };
-                reader.onerror = function() {
-                    resolve(null);
-                };
-                reader.readAsText(file);
-            });
-        };
     </script>
 </body>
 
