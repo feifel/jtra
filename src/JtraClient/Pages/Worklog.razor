@@ -1,7 +1,8 @@
 @page "/"
+@page "/worklog"
 @implements IDisposable
 
-<PageTitle>JTRA - Home</PageTitle>
+<PageTitle>JTRA - Worklog</PageTitle>
 
 <div class="home-layout">
     <div class="today-stats">
@@ -120,7 +121,7 @@
 
     @if (showEditDialog && editingEntry != null)
     {
-        <EditEntryDialog Entry="editingEntry"
+        <WorklogDialog Entry="editingEntry"
                          OnSave="SaveEntry"
                          OnDelete="DeleteEntry"
                          OnClose="CloseEditDialog"
@@ -135,7 +136,7 @@
     [Inject] private CsvExportService CsvExport { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private HttpClient Http { get; set; } = default!;
-    [Inject] private ILogger<Home> Logger { get; set; } = default!;
+    [Inject] private ILogger<Worklog> Logger { get; set; } = default!;
 
     private bool showEditDialog = false;
     private bool showDataMenu = false;

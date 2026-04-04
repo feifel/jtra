@@ -1,4 +1,4 @@
-@page "/tasktypes"
+@page "/tasks"
 @implements IDisposable
 
 <PageTitle>JTRA - Tasks</PageTitle>
@@ -50,7 +50,7 @@ else
 
 @if (showEditDialog && editingEntry != null)
 {
-    <EditTaskDialog Entry="editingEntry" OnSave="SaveEntry" OnDelete="DeleteEntry" OnClose="CloseEditDialog" />
+    <TaskDialog Entry="editingEntry" OnSave="SaveEntry" OnDelete="DeleteEntry" OnClose="CloseEditDialog" />
 }
 
 @code {
