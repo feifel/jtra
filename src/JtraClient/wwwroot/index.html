@@ -28,6 +28,7 @@
         <a href="" class="reload">Reload</a>
         <a class="dismiss">🗙</a>
     </div>
+    <script src="_content/Vizor.ECharts.Net80/js/vizor-echarts-bundle-min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
     <script src="_framework/blazor.webassembly.js"></script>
     <script>
@@ -90,30 +91,30 @@
             init: function() {
                 return new Promise((resolve, reject) => {
                     const request = indexedDB.open(this.dbName, this.dbVersion);
-                    
+
                     request.onerror = () => reject(request.error);
                     request.onsuccess = () => {
                         this.db = request.result;
                         resolve();
                     };
-                    
+
                     request.onupgradeneeded = (event) => {
                         const db = event.target.result;
-                        
+
                         if (!db.objectStoreNames.contains('time_entries')) {
                             const entriesStore = db.createObjectStore('time_entries', { keyPath: 'id', autoIncrement: true });
                             entriesStore.createIndex('date', 'date', { unique: false });
                         }
-                        
+
                         if (!db.objectStoreNames.contains('settings')) {
                             db.createObjectStore('settings', { keyPath: 'key' });
                         }
-                        
+
                         if (!db.objectStoreNames.contains('ticket_cache')) {
                             const cacheStore = db.createObjectStore('ticket_cache', { keyPath: 'ticketKey' });
                             cacheStore.createIndex('lastUsedAt', 'lastUsedAt', { unique: false });
                         }
-                        
+
                         if (!db.objectStoreNames.contains('connection_state')) {
                             db.createObjectStore('connection_state', { keyPath: 'id' });
                         }
@@ -154,7 +155,7 @@
                     const transaction = this.db.transaction(['time_entries'], 'readonly');
                     const store = transaction.objectStore('time_entries');
                     const request = store.getAll();
-                    
+
                     request.onsuccess = () => resolve(request.result);
                     request.onerror = () => reject(request.error);
                 });
@@ -165,7 +166,7 @@
                     const transaction = this.db.transaction(['time_entries'], 'readonly');
                     const store = transaction.objectStore('time_entries');
                     const request = store.get(id);
-                    
+
                     request.onsuccess = () => resolve(request.result);
                     request.onerror = () => reject(request.error);
                 });
@@ -176,7 +177,7 @@
                     const transaction = this.db.transaction(['time_entries'], 'readwrite');
                     const store = transaction.objectStore('time_entries');
                     const request = store.add(entry);
-                    
+
                     request.onsuccess = () => resolve(request.result);
                     request.onerror = () => reject(request.error);
                 });
@@ -187,7 +188,7 @@
                     const transaction = this.db.transaction(['time_entries'], 'readwrite');
                     const store = transaction.objectStore('time_entries');
                     const request = store.put(entry);
-                    
+
                     request.onsuccess = () => resolve();
                     request.onerror = () => reject(request.error);
                 });
@@ -198,7 +199,7 @@
                     const transaction = this.db.transaction(['time_entries'], 'readwrite');
                     const store = transaction.objectStore('time_entries');
                     const request = store.delete(id);
-                    
+
                     request.onsuccess = () => resolve();
                     request.onerror = () => reject(request.error);
                 });
@@ -210,7 +211,7 @@
                     const store = transaction.objectStore('time_entries');
                     const index = store.index('date');
                     const request = index.getAll(date);
-                    
+
                     request.onsuccess = () => resolve(request.result);
                     request.onerror = () => reject(request.error);
                 });
@@ -296,7 +297,7 @@
                     const transaction = this.db.transaction(['settings'], 'readonly');
                     const store = transaction.objectStore('settings');
                     const request = store.get('appSettings');
-                    
+
                     request.onsuccess = () => {
                         if (request.result) {
                             resolve(request.result.value);
@@ -313,7 +314,7 @@
                     const transaction = this.db.transaction(['settings'], 'readwrite');
                     const store = transaction.objectStore('settings');
                     const request = store.put({ key: 'appSettings', value: settings });
-                    
+
                     request.onsuccess = () => resolve();
                     request.onerror = () => reject(request.error);
                 });
@@ -324,7 +325,7 @@
                     const transaction = this.db.transaction(['ticket_cache'], 'readonly');
                     const store = transaction.objectStore('ticket_cache');
                     const request = store.get(ticketKey);
-                    
+
                     request.onsuccess = () => resolve(request.result);
                     request.onerror = () => reject(request.error);
                 });
@@ -335,7 +336,7 @@
                     const transaction = this.db.transaction(['ticket_cache'], 'readonly');
                     const store = transaction.objectStore('ticket_cache');
                     const request = store.getAll();
-                    
+
                     request.onsuccess = () => resolve(request.result);
                     request.onerror = () => reject(request.error);
                 });
@@ -346,7 +347,7 @@
                     const transaction = this.db.transaction(['ticket_cache'], 'readwrite');
                     const store = transaction.objectStore('ticket_cache');
                     const request = store.put(ticket);
-                    
+
                     request.onsuccess = () => resolve();
                     request.onerror = () => reject(request.error);
                 });
@@ -357,7 +358,7 @@
                     const transaction = this.db.transaction(['ticket_cache'], 'readwrite');
                     const store = transaction.objectStore('ticket_cache');
                     const request = store.put(ticket);
-                    
+
                     request.onsuccess = () => resolve();
                     request.onerror = () => reject(request.error);
                 });
@@ -368,7 +369,7 @@
                     const transaction = this.db.transaction(['ticket_cache'], 'readwrite');
                     const store = transaction.objectStore('ticket_cache');
                     const request = store.delete(ticketKey);
-                    
+
                     request.onsuccess = () => resolve();
                     request.onerror = () => reject(request.error);
                 });
@@ -379,7 +380,7 @@
                     const transaction = this.db.transaction(['ticket_cache'], 'readwrite');
                     const store = transaction.objectStore('ticket_cache');
                     const request = store.clear();
-                    
+
                     request.onsuccess = () => resolve();
                     request.onerror = () => reject(request.error);
                 });
@@ -390,7 +391,7 @@
                     const transaction = this.db.transaction(['connection_state'], 'readonly');
                     const store = transaction.objectStore('connection_state');
                     const request = store.get('current');
-                    
+
                     request.onsuccess = () => resolve(request.result || null);
                     request.onerror = () => reject(request.error);
                 });
@@ -401,7 +402,7 @@
                     const transaction = this.db.transaction(['connection_state'], 'readwrite');
                     const store = transaction.objectStore('connection_state');
                     const request = store.put({ id: 'current', ...state });
-                    
+
                     request.onsuccess = () => resolve();
                     request.onerror = () => reject(request.error);
                 });
@@ -410,7 +411,7 @@
             clearAllData: function() {
                 return new Promise((resolve, reject) => {
                     const transaction = this.db.transaction(['time_entries', 'settings', 'ticket_cache', 'connection_state', 'task_entries'], 'readwrite');
-                    
+
                     const promises = ['time_entries', 'settings', 'ticket_cache', 'connection_state', 'task_entries'].map(storeName => {
                         return new Promise((res, rej) => {
                             const store = transaction.objectStore(storeName);
@@ -419,7 +420,7 @@
                             request.onerror = () => rej(request.error);
                         });
                     });
-                    
+
                     Promise.all(promises).then(resolve).catch(reject);
                 });
             },
@@ -429,7 +430,7 @@
                     const transaction = this.db.transaction(['time_entries'], 'readwrite');
                     const store = transaction.objectStore('time_entries');
                     const request = store.clear();
-                    
+
                     request.onsuccess = () => resolve();
                     request.onerror = () => reject(request.error);
                 });
@@ -490,33 +491,6 @@
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-        };
-
-        window.getSelectedFiles = function() {
-            const input = document.querySelector('input[type="file"]');
-            if (input && input.files && input.files.length > 0) {
-                return Array.from(input.files).map(f => f.name);
-            }
-            return [];
-        };
-
-        window.readFileContent = function() {
-            return new Promise((resolve, reject) => {
-                const input = document.querySelector('input[type="file"]');
-                if (!input || !input.files || input.files.length === 0) {
-                    resolve(null);
-                    return;
-                }
-                const file = input.files[0];
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    resolve(e.target.result);
-                };
-                reader.onerror = function() {
-                    resolve(null);
-                };
-                reader.readAsText(file);
-            });
         };
     </script>
 </body>

@@ -11,6 +11,7 @@ public static class JiraControllerExtensions
 
         group.MapGet("/issue/{key}/summary", GetTicketSummary);
         group.MapPost("/issue/{key}/worklog", PostWorklog);
+        group.MapGet("/myself", GetMyself);
 
         return endpoints;
     }
@@ -94,6 +95,52 @@ public static class JiraControllerExtensions
 
             var content = await response.Content.ReadAsStringAsync();
             return Results.Text(content, "application/json");
+        }
+        catch (Exception ex)
+        {
+            return Results.Problem(ex.Message);
+        }
+    }
+
+    private static async Task<IResult> GetMyself(
+        [FromHeader(Name = "X-Jira-Base-Url")] string jiraBaseUrl,
+        [FromHeader(Name = "X-Jira-Pat")] string pat,
+        HttpClient httpClient)
+    {
+        if (string.IsNullOrEmpty(jiraBaseUrl) || string.IsNullOrEmpty(pat))
+        {
+            return Results.BadRequest("JIRA base URL and PAT are required");
+        }
+
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, $"{jiraBaseUrl.TrimEnd('/')}/rest/api/2/myself");
+            request.Headers.Add("Authorization", $"Bearer {pat}");
+
+            var response = await httpClient.SendAsync(request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return Results.StatusCode((int)response.StatusCode);
+            }
+
+            var content = await response.Content.ReadAsStringAsync();
+
+            try
+            {
+                using var document = JsonDocument.Parse(content);
+                if (document.RootElement.TryGetProperty("emailAddress", out var emailElement))
+                {
+                    var emailAddress = emailElement.GetString();
+                    return Results.Json(new { emailAddress });
+                }
+
+                return Results.Problem("Email address not found in JIRA response");
+            }
+            catch (JsonException)
+            {
+                return Results.Problem("Invalid JSON returned from JIRA");
+            }
         }
         catch (Exception ex)
         {

@@ -1,12 +1,12 @@
-@page "/tasktypes"
+@page "/tasks"
 @implements IDisposable
 
 <PageTitle>JTRA - Tasks</PageTitle>
 
 <div class="entries-header">
-    <h2>Task Types</h2>
+    <h2>Tasks</h2>
     <div class="header-buttons">
-        <button class="btn btn-primary" @onclick="ShowNewEntryDialog">Add Entry</button>
+        <button class="btn btn-primary" @onclick="ShowNewEntryDialog">Add</button>
         <div class="dropdown" style="position: relative; display: inline-block;">
             <button class="btn btn-outline-secondary" @onclick="ToggleDataMenu" @onclick:stopPropagation="true">...</button>
             @if (showDataMenu)
@@ -23,34 +23,31 @@
     </div>
 </div>
 
-@if (AppState.AllTaskEntries.Any())
-{
-    <div class="entries-list">
-        <div class="entry-row entry-header">
-            <div class="entry-category">Category</div>
-            <div class="entry-subcategory">Subcategory</div>
-            <div class="entry-ticket">Ticket</div>
-            <div class="entry-description">Description</div>
-        </div>
-        @foreach (var entry in AppState.AllTaskEntries.OrderBy(e => e.Category).ThenBy(e => e.Subcategory))
-        {
-            <div class="entry-row" @ondblclick="() => StartEdit(entry)">
-                <div class="entry-category">@entry.Category</div>
-                <div class="entry-subcategory">@entry.Subcategory</div>
-                <div class="entry-ticket">@entry.Ticket</div>
-                <div class="entry-description">@entry.Description</div>
-            </div>
-        }
+<div class="entries-list tasks-list">
+    <div class="entry-row entry-header">
+        <div class="entry-category">Category</div>
+        <div class="entry-subcategory">Subcategory</div>
+        <div class="entry-ticket">Ticket</div>
+        <div class="entry-description">Description</div>
     </div>
-}
-else
-{
-    <p class="no-entries">No task types configured. Click "Add Entry" to create one.</p>
-}
+    @foreach (var entry in AppState.AllTaskEntries.OrderBy(e => e.Category).ThenBy(e => e.Subcategory))
+    {
+        <div class="entry-row" @ondblclick="() => StartEdit(entry)">
+            <div class="entry-category">@entry.Category</div>
+            <div class="entry-subcategory">@entry.Subcategory</div>
+            <div class="entry-ticket">@entry.Ticket</div>
+            <div class="entry-description">@entry.Description</div>
+        </div>
+    }
+    @if (!AppState.AllTaskEntries.Any())
+    {
+        <p class="no-entries" style="padding: 0.5rem 1rem;">No task types configured.</p>
+    }
+</div>
 
 @if (showEditDialog && editingEntry != null)
 {
-    <EditTaskDialog Entry="editingEntry" OnSave="SaveEntry" OnDelete="DeleteEntry" OnClose="CloseEditDialog" />
+    <TaskDialog Entry="editingEntry" OnSave="SaveEntry" OnDelete="DeleteEntry" OnClose="CloseEditDialog" />
 }
 
 @code {

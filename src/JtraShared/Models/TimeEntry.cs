@@ -1,6 +1,6 @@
 namespace JtraShared.Models;
 
-public class TimeEntry
+public class TimeEntry : IEquatable<TimeEntry>
 {
     public int Id { get; set; }
     public string Date { get; set; } = string.Empty;
@@ -14,4 +14,8 @@ public class TimeEntry
     public string? DayDeviationHhmm { get; set; }
     public double? DayDeviationDays { get; set; }
     public bool PendingForJiraSubmission { get; set; }
+
+    public bool Equals(TimeEntry? other) => other is not null && Id == other.Id;
+    public override bool Equals(object? obj) => Equals(obj as TimeEntry);
+    public override int GetHashCode() => Id.GetHashCode();
 }

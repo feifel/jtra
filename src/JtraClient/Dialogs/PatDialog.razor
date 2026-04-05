@@ -1,0 +1,113 @@
+@inject HttpClient Http
+@inject AppState AppState
+
+<div class="popup-overlay" @onclick="Close">
+    <div class="popup-content" @onclick:stopPropagation="true">
+        <h3>Configure JIRA PAT</h3>
+        
+        <div class="alert alert-info">
+            <strong>How to create a JIRA Personal Access Token:</strong>
+            <ol class="mb-0 mt-2">
+                <li>Log in to your JIRA instance</li>
+                <li>Click your profile picture → <strong>Personal Access Tokens</strong></li>
+                <li>Click <strong>Create token</strong></li>
+                <li>Enter a name (e.g., "JTRA") and click <strong>Create</strong></li>
+                <li>Copy the token and paste it below</li>
+            </ol>
+        </div>
+
+        <div class="form-group">
+            <label>New Personal Access Token</label>
+            <input type="password" @bind="newPat" class="form-control" placeholder="Paste your PAT here" @onkeydown="HandleKeyDown" />
+        </div>
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger">@errorMessage</div>
+        }
+
+        @if (isLoading)
+        {
+            <div class="alert alert-secondary">Verifying token...</div>
+        }
+
+        <div class="popup-actions">
+            <button class="btn btn-primary" @onclick="Save" disabled="@isLoading">Save</button>
+            <button class="btn btn-secondary" @onclick="Close">Cancel</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback<(string Pat, string Email)> OnSave { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string newPat = string.Empty;
+    private string? errorMessage;
+    private bool isLoading;
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await Save();
+        }
+        else if (e.Key == "Escape")
+        {
+            await Close();
+        }
+    }
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(newPat))
+        {
+            errorMessage = "Please enter a PAT.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(AppState.Settings.JiraBaseUrl))
+        {
+            errorMessage = "Please configure JIRA Base URL first.";
+            return;
+        }
+
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, "/api/jira/myself");
+            request.Headers.Add("X-Jira-Base-Url", AppState.Settings.JiraBaseUrl);
+            request.Headers.Add("X-Jira-Pat", newPat);
+
+            var response = await Http.SendAsync(request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                using var doc = System.Text.Json.JsonDocument.Parse(content);
+                var email = doc.RootElement.GetProperty("emailAddress").GetString();
+
+                await OnSave.InvokeAsync((newPat, email ?? string.Empty));
+            }
+            else
+            {
+                errorMessage = $"Failed to verify token: {(int)response.StatusCode} {response.ReasonPhrase}";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error verifying token: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task Close()
+    {
+        await OnClose.InvokeAsync();
+    }
+}

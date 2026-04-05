@@ -1,0 +1,200 @@
+@page "/help"
+
+<PageTitle>JTRA - Help</PageTitle>
+
+<h2>Help</h2>
+
+<div class="settings-form">
+    <h4>Overview</h4>
+    <p>
+        JTRA (JIRA Time Recording Application) is a time-tracking tool that helps you
+        record work against JIRA tickets. It runs in your browser and stores data locally
+        using IndexedDB. Periodic check-in reminders help you keep your worklog accurate.
+    </p>
+
+    <hr />
+
+    <h4>Key Concepts</h4>
+
+    <h5>Worklog</h5>
+    <p>
+        Your time entries are displayed on the main Worklog page. Each entry records:
+    </p>
+    <ul>
+        <li><strong>Date</strong> - When the work was done</li>
+        <li><strong>Start Time</strong> - When you started</li>
+        <li><strong>Task Type</strong> - Category of work (Ticket, Break, etc.)</li>
+        <li><strong>Ticket</strong> - JIRA ticket key (for Ticket type)</li>
+        <li><strong>Description</strong> - Optional notes about the work</li>
+    </ul>
+    <p>
+        Double-click an entry to edit it. Duration is calculated automatically based on
+        the start time of consecutive entries.
+    </p>
+
+    <h5>Check-in</h5>
+    <p>
+        Periodic reminders prompt you to confirm or update your current task.
+        The check-in interval can be configured in Settings. When a check-in triggers:
+    </p>
+    <ul>
+        <li>A popup appears showing your current task</li>
+        <li>Confirm to create a new time entry</li>
+        <li>Change the task type, ticket, or description as needed</li>
+    </ul>
+
+    <h5>Snooze</h5>
+    <p>
+        When a check-in popup appears, you can snooze it to delay the next check-in.
+        Select a time from the dropdown to postpone the reminder.
+    </p>
+
+    <h5>Tickets</h5>
+    <p>
+        JIRA tickets you work on. Tickets are cached locally with their summaries.
+        When you enter a ticket key (e.g., "PROJ-123"), the app fetches the summary
+        from JIRA if configured. Double-click a ticket to edit its cached summary.
+    </p>
+
+    <h5>Tasks</h5>
+    <p>
+        Task types categorize your work (e.g., "Development", "Meeting", "Break").
+        Each task can have a category and optional subcategory.
+    </p>
+
+    <h5>Default Tasks</h5>
+    <p>
+        Three built-in tasks are always available:
+    </p>
+    <ul>
+        <li><strong>Break</strong> - For lunch, coffee breaks, etc. (excluded from totals)</li>
+        <li><strong>Holiday / Public</strong> - For public holidays (affects expected hours)</li>
+        <li><strong>Holiday / Personal</strong> - For personal time off</li>
+    </ul>
+
+    <hr />
+
+    <h4>Pages</h4>
+
+    <h5>Worklog</h5>
+    <p>
+        View and manage your time entries. Double-click an entry to edit it.
+        The current task is highlighted at the top. Daily totals show accumulated
+        time and deviation from your target hours.
+    </p>
+
+    <h5>Tickets</h5>
+    <p>
+        Manage your cached JIRA tickets. Add new tickets, edit summaries, or remove
+        tickets you no longer need. Double-click to edit a ticket's summary.
+    </p>
+
+    <h5>Tasks</h5>
+    <p>
+        Manage your task categories. Create tasks like "Development", "Meeting",
+        "Review", etc. Each task can optionally link to a JIRA ticket for automatic
+        worklog submission. Double-click to edit a task.
+    </p>
+
+    <h5>Charts</h5>
+    <p>
+        Visualize your time distribution by category and subcategory over a
+        selectable date range. Filter by date range and exclude specific tasks.
+    </p>
+
+    <h5>Reports</h5>
+    <p>
+        View monthly reports showing daily expected vs. reported hours.
+        Highlights weekends and public holidays. Shows deviation in hours and days.
+    </p>
+
+    <h5>Backup</h5>
+    <p>
+        Backup your data to the server or to a file. Restore from server or file.
+        Automatic backups run at the configured interval. Use merge mode to combine
+        data or replace mode to overwrite.
+    </p>
+
+    <h5>Settings</h5>
+    <p>
+        Configure the application:
+    </p>
+    <ul>
+        <li><strong>JIRA Base URL</strong> - Your JIRA instance URL</li>
+        <li><strong>PAT</strong> - Personal Access Token for JIRA API access</li>
+        <li><strong>Default Target Hours</strong> - Daily work target (e.g., 8:00)</li>
+        <li><strong>Check-in Interval</strong> - How often to show reminders</li>
+        <li><strong>Auto-confirm Break Minutes</strong> - Auto-confirm after this duration</li>
+        <li><strong>Use 24-hour format</strong> - Time display preference</li>
+        <li><strong>CSV Export Order</strong> - Oldest or newest entries first</li>
+    </ul>
+
+    <hr />
+
+    <h4>Configuring JIRA Connection</h4>
+
+    <h5>Step 1: Create a Personal Access Token (PAT)</h5>
+    <ol>
+        <li>Log in to your JIRA instance</li>
+        <li>Click your profile picture (top right)</li>
+        <li>Select <strong>Personal Access Tokens</strong></li>
+        <li>Click <strong>Create token</strong></li>
+        <li>Enter a name (e.g., "JTRA") and click <strong>Create</strong></li>
+        <li>Copy the token (you won't be able to see it again)</li>
+    </ol>
+
+    <h5>Step 2: Configure JTRA</h5>
+    <ol>
+        <li>Go to <strong>Settings</strong></li>
+        <li>Enter your <strong>JIRA Base URL</strong> (e.g., https://yourcompany.atlassian.net)</li>
+        <li>Click <strong>Configure</strong> next to the PAT field</li>
+        <li>Paste your token and click <strong>Save</strong></li>
+        <li>Your email will be retrieved automatically from JIRA</li>
+    </ol>
+
+    <hr />
+
+    <h4>Data Storage</h4>
+    <p>
+        All data is stored locally in your browser using IndexedDB. This means:
+    </p>
+    <ul>
+        <li>Data persists across browser sessions</li>
+        <li>Data is specific to each browser/device</li>
+        <li>Clearing browser data will delete your entries</li>
+        <li>Use the Backup feature to protect your data</li>
+    </ul>
+
+    <hr />
+
+    <h4>CSV Import/Export</h4>
+    <p>
+        Export your time entries to CSV for analysis or backup. Import CSV files
+        to restore data or bulk-add entries. Access these features from the Worklog page.
+    </p>
+
+    <hr />
+
+    <h4>Troubleshooting</h4>
+
+    <h5>Check-in popups not appearing</h5>
+    <ul>
+        <li>Check the Check-in Interval in Settings</li>
+        <li>Ensure the server is running (check connection indicator)</li>
+        <li>Check browser notification permissions</li>
+    </ul>
+
+    <h5>JIRA ticket summary not loading</h5>
+    <ul>
+        <li>Verify your JIRA Base URL is correct</li>
+        <li>Verify your PAT is valid and not expired</li>
+        <li>Check the browser console for error messages</li>
+    </ul>
+
+    <h5>Data appears to be lost</h5>
+    <ul>
+        <li>Check if browser data was cleared</li>
+        <li>Try restoring from a backup</li>
+        <li>Check if you're using a different browser or incognito mode</li>
+    </ul>
+</div>

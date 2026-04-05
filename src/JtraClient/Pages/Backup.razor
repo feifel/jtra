@@ -1,0 +1,327 @@
+@page "/backup"
+@implements IDisposable
+@using JtraClient.Services
+@using System.Text.Json
+
+<PageTitle>JTRA - Backup</PageTitle>
+
+<h2>Backup & Restore</h2>
+
+@if (showRestoreDialog && fetchedBackup != null)
+{
+    <RestoreDialog Backup="fetchedBackup" OnConfirm="OnRestoreConfirm" OnClose="@(() => showRestoreDialog = false)" />
+}
+
+<div class="settings-form">
+    <div class="form-group">
+        <label>Email</label>
+        <input type="email" readonly value="@AppState.Settings.Email" class="form-control" placeholder="Not configured" />
+        <small class="form-text text-muted">Configure your email in Settings to enable backup/restore.</small>
+    </div>
+
+    <hr />
+
+    <h4>Backup</h4>
+
+    <div class="form-group">
+        <label>Backup Interval</label>
+        <select @bind="backupIntervalMinutes" @bind:after="OnIntervalChanged" class="form-control">
+            @foreach (var interval in GetBackupIntervalOptions())
+            {
+                <option value="@interval">Every @interval minute@(interval == 1 ? string.Empty : "s")</option>
+            }
+        </select>
+        <small class="form-text text-muted">Automatically backup data to the server.</small>
+    </div>
+
+    <div class="form-group">
+        <button class="btn btn-primary" @onclick="BackupNow" disabled="@isBackingUp">
+            @if (isBackingUp)
+            {
+                <span>Backing up...</span>
+            }
+            else
+            {
+                <span>Backup to Server</span>
+            }
+        </button>
+        <button class="btn btn-outline-primary" @onclick="BackupToFile" disabled="@isBackingUpToFile">
+            @if (isBackingUpToFile)
+            {
+                <span>Creating file...</span>
+            }
+            else
+            {
+                <span>Backup to File</span>
+            }
+        </button>
+        @if (!string.IsNullOrEmpty(backupStatus))
+        {
+            <small class="form-text @(backupSuccess ? "text-success" : "text-danger")">@backupStatus</small>
+        }
+    </div>
+
+    <hr />
+
+    <h4>Restore</h4>
+
+    <div class="form-group">
+        <button class="btn btn-primary" @onclick="FetchBackup" disabled="@(isFetching || isRestoring)">
+            @if (isFetching)
+            {
+                <span>Fetching...</span>
+            }
+            else if (isRestoring)
+            {
+                <span>Restoring...</span>
+            }
+            else
+            {
+                <span>Restore from Server</span>
+            }
+        </button>
+        <button class="btn btn-outline-primary @(isRestoringFromFile ? "disabled" : "")" style="cursor: pointer;">
+            @if (isRestoringFromFile)
+            {
+                <span>Restoring...</span>
+            }
+            else
+            {
+                <span>Restore from File</span>
+            }
+            <InputFile OnChange="RestoreFromFile" accept=".json" style="display: none;" />
+        </button>
+        @if (!hasEmail)
+        {
+            <small class="form-text text-warning">Configure your email in Settings to enable restore from server.</small>
+        }
+        @if (!string.IsNullOrEmpty(restoreStatus))
+        {
+            <small class="form-text @(restoreSuccess ? "text-success" : "text-danger")">@restoreStatus</small>
+        }
+    </div>
+</div>
+
+@code {
+    [Inject] private AppState AppState { get; set; } = default!;
+    [Inject] private BackupService BackupService { get; set; } = default!;
+    [Inject] private BackupTimerService BackupTimer { get; set; } = default!;
+    [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
+
+    private int backupIntervalMinutes;
+    private bool isBackingUp;
+    private bool isBackingUpToFile;
+    private string? backupStatus;
+    private bool backupSuccess;
+
+    private bool isFetching;
+    private bool isRestoring;
+    private bool isRestoringFromFile;
+    private string? restoreStatus;
+    private bool restoreSuccess;
+
+    private BackupPayload? fetchedBackup;
+    private bool showRestoreDialog;
+
+    private bool hasEmail => !string.IsNullOrWhiteSpace(AppState.Settings.Email);
+
+    protected override void OnInitialized()
+    {
+        backupIntervalMinutes = AppState.Settings.BackupIntervalMinutes;
+        AppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+    }
+
+    private async Task OnIntervalChanged()
+    {
+        var settings = AppState.Settings;
+        settings.BackupIntervalMinutes = backupIntervalMinutes;
+        await AppState.SaveSettingsAsync(settings);
+        BackupTimer.Restart();
+    }
+
+    private async Task BackupNow()
+    {
+        isBackingUp = true;
+        backupStatus = null;
+
+        try
+        {
+            var success = await BackupService.SendBackupAsync();
+            backupSuccess = success;
+            backupStatus = success ? "Backup completed successfully." : "Backup failed. Check if email is configured.";
+        }
+        catch (Exception ex)
+        {
+            backupSuccess = false;
+            backupStatus = $"Backup failed: {ex.Message}";
+        }
+        finally
+        {
+            isBackingUp = false;
+        }
+    }
+
+    private async Task BackupToFile()
+    {
+        isBackingUpToFile = true;
+        backupStatus = null;
+
+        try
+        {
+            var payload = await BackupService.CreateBackupPayloadAsync();
+            var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
+            var fileName = $"jtra-backup-{DateTime.Now:yyyy-MM-dd-HHmmss}.json";
+            var base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(json));
+            
+            await JSRuntime.InvokeVoidAsync("downloadFile", fileName, "application/json", base64);
+            backupSuccess = true;
+            backupStatus = "Backup file downloaded.";
+        }
+        catch (Exception ex)
+        {
+            backupSuccess = false;
+            backupStatus = $"Backup to file failed: {ex.Message}";
+        }
+        finally
+        {
+            isBackingUpToFile = false;
+        }
+    }
+
+    private async Task RestoreFromFile(InputFileChangeEventArgs e)
+    {
+        isRestoringFromFile = true;
+        restoreStatus = null;
+
+        try
+        {
+            var file = e.File;
+            using var stream = file.OpenReadStream(maxAllowedSize: 10_000_000);
+            using var reader = new StreamReader(stream);
+            var json = await reader.ReadToEndAsync();
+            var payload = JsonSerializer.Deserialize<BackupPayload>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            if (payload == null)
+            {
+                restoreSuccess = false;
+                restoreStatus = "Invalid backup file.";
+                return;
+            }
+
+            fetchedBackup = payload;
+            showRestoreDialog = true;
+        }
+        catch (Exception ex)
+        {
+            restoreSuccess = false;
+            restoreStatus = $"Failed to read backup file: {ex.Message}";
+        }
+        finally
+        {
+            isRestoringFromFile = false;
+        }
+    }
+
+    private async Task FetchBackup()
+    {
+        if (!hasEmail)
+        {
+            restoreSuccess = false;
+            restoreStatus = "Configure your email in Settings first.";
+            return;
+        }
+
+        isFetching = true;
+        restoreStatus = null;
+
+        try
+        {
+            fetchedBackup = await BackupService.FetchBackupAsync();
+
+            if (fetchedBackup == null)
+            {
+                restoreSuccess = false;
+                restoreStatus = "No backup found for your email.";
+            }
+            else
+            {
+                showRestoreDialog = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            restoreSuccess = false;
+            restoreStatus = $"Failed to fetch backup: {ex.Message}";
+        }
+        finally
+        {
+            isFetching = false;
+        }
+    }
+
+    private async Task OnRestoreConfirm(bool isReplace)
+    {
+        showRestoreDialog = false;
+        isRestoring = true;
+        restoreStatus = null;
+
+        try
+        {
+            bool success;
+            if (fetchedBackup == null)
+            {
+                restoreSuccess = false;
+                restoreStatus = "No backup data to restore.";
+                return;
+            }
+
+            if (isReplace)
+            {
+                success = await BackupService.RestoreReplaceAsync(fetchedBackup);
+            }
+            else
+            {
+                success = await BackupService.RestoreMergeAsync(fetchedBackup);
+            }
+
+            restoreSuccess = success;
+            restoreStatus = success
+                ? $"Restore ({(isReplace ? "replace" : "merge")}) completed successfully. Refreshing data..."
+                : "Restore failed.";
+
+            if (success)
+            {
+                await AppState.RefreshEntriesAsync();
+                backupIntervalMinutes = AppState.Settings.BackupIntervalMinutes;
+            }
+        }
+        catch (Exception ex)
+        {
+            restoreSuccess = false;
+            restoreStatus = $"Restore failed: {ex.Message}";
+        }
+        finally
+        {
+            isRestoring = false;
+            fetchedBackup = null;
+        }
+    }
+
+    private IEnumerable<int> GetBackupIntervalOptions()
+    {
+        yield return 5;
+        yield return 10;
+        yield return 15;
+        yield return 30;
+        yield return 60;
+        yield return 120;
+    }
+}

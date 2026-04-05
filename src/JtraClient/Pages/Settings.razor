@@ -5,7 +5,18 @@
 
 <h2>Settings</h2>
 
+@if (showPatDialog)
+{
+    <PatDialog OnSave="@OnPatDialogSave" OnClose="@(() => showPatDialog = false)" />
+}
+
 <div class="settings-form">
+    <div class="form-group">
+        <label>Email</label>
+        <input type="email" readonly value="@settings.Email" class="form-control" placeholder="Not configured" />
+        <small class="form-text text-muted">Retrieved from JIRA when you configure your PAT.</small>
+    </div>
+
     <div class="form-group">
         <label>JIRA Base URL</label>
         <input type="url" @bind="settings.JiraBaseUrl" class="form-control" placeholder="https://your-company.atlassian.net" />
@@ -13,7 +24,10 @@
 
     <div class="form-group">
         <label>Personal Access Token (PAT)</label>
-        <input type="password" @bind="settings.Pat" class="form-control" placeholder="Your JIRA PAT" />
+        <div class="input-group">
+            <input type="password" readonly value="@GetMaskedPat()" class="form-control" placeholder="Not configured" />
+            <button class="btn btn-outline-secondary" type="button" @onclick="@(() => showPatDialog = true)">Configure</button>
+        </div>
         <small class="form-text text-muted">Stored locally in your browser only.</small>
     </div>
 
@@ -31,11 +45,6 @@
             }
         </select>
         <small class="form-text text-muted">The server sends a heartbeat every minute. Your browser decides when to show the check-in popup.</small>
-    </div>
-
-    <div class="form-group">
-        <label>Max Snooze Hours</label>
-        <input type="number" @bind="settings.MaxSnoozeHours" class="form-control" min="1" max="8" />
     </div>
 
     <div class="form-group">
@@ -61,9 +70,11 @@
 
 @code {
     [Inject] private AppState AppState { get; set; } = default!;
+    [Inject] private HttpClient Http { get; set; } = default!;
 
     private AppSettings settings = new();
     private string defaultTargetHours = "08:00";
+    private bool showPatDialog;
 
     protected override void OnInitialized()
     {
@@ -71,9 +82,9 @@
         {
             JiraBaseUrl = AppState.Settings.JiraBaseUrl,
             Pat = AppState.Settings.Pat,
+            Email = AppState.Settings.Email,
             DefaultTargetHours = AppState.Settings.DefaultTargetHours,
             NotificationIntervalMinutes = AppState.Settings.NotificationIntervalMinutes,
-            MaxSnoozeHours = AppState.Settings.MaxSnoozeHours,
             AutoConfirmBreakMinutes = AppState.Settings.AutoConfirmBreakMinutes,
             Use24HourFormat = AppState.Settings.Use24HourFormat,
             CsvExportOldestFirst = AppState.Settings.CsvExportOldestFirst
@@ -87,6 +98,21 @@
     public void Dispose()
     {
         AppState.OnChange -= StateHasChanged;
+    }
+
+    private string GetMaskedPat()
+    {
+        if (string.IsNullOrEmpty(settings.Pat)) return string.Empty;
+        if (settings.Pat.Length <= 4) return "****";
+        return settings.Pat[..4] + new string('*', Math.Min(settings.Pat.Length - 4, 20));
+    }
+
+    private async Task OnPatDialogSave((string Pat, string Email) result)
+    {
+        settings.Pat = result.Pat;
+        settings.Email = result.Email;
+        showPatDialog = false;
+        await AppState.SaveSettingsAsync(settings);
     }
 
     private async Task SaveSettings()

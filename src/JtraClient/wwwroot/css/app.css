@@ -152,15 +152,7 @@ code {
     gap: 0.5rem;
 }
 
-.date-navigation {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
 
-.date-picker {
-    width: 150px;
-}
 
 .date-navigation {
     display: flex;
@@ -182,6 +174,100 @@ code {
     overflow: hidden;
 }
 
+.worklog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.worklog-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.worklog-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.today-summary {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.today-summary-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.today-summary-label {
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.today-summary-count {
+    font-size: 0.75rem;
+    color: #6c757d;
+}
+
+.today-summary-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.today-summary-item {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    font-size: 0.8125rem;
+    padding: 0.2rem 0.25rem;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.today-summary-item:hover {
+    background: #e9ecef;
+}
+
+.today-summary-time {
+    font-weight: 500;
+    min-width: 40px;
+}
+
+.today-summary-task {
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.today-summary-ticket {
+    color: #0d6efd;
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.today-summary-dur {
+    color: #6c757d;
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.today-summary-empty {
+    color: #6c757d;
+    font-size: 0.875rem;
+    margin: 0;
+}
+
 .entries-scroll-container {
     flex: 1 1 auto;
     min-height: 0;
@@ -190,7 +276,7 @@ code {
 }
 
 .today-stats,
-.inline-add-row {
+.today-summary {
     flex-shrink: 0;
 }
 
@@ -534,6 +620,10 @@ code {
     justify-content: flex-end;
 }
 
+.tasks-list .entry-row {
+    grid-template-columns: 165px 110px 90px 1fr;
+}
+
 .entry-last-used {
     color: #6c757d;
 }
@@ -586,4 +676,33 @@ code {
     .tickets-list .entry-row {
         grid-template-columns: 120px 1fr 120px 85px;
     }
+}
+
+.charts-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+    margin-bottom: 1.5rem;
+}
+
+.charts-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 0;
+}
+
+.charts-filter-group label {
+    font-weight: 500;
+    font-size: 0.875rem;
+    margin-bottom: 0;
+}
+
+.charts-container {
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+    padding: 1rem;
+    width: 100%;
 }

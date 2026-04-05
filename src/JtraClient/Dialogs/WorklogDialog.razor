@@ -3,7 +3,7 @@
 
 <div class="popup-overlay" @onclick="Close">
     <div class="popup-content" @onclick:stopPropagation="true">
-        <h3>Edit Entry</h3>
+        <h3>@(Entry.Id > 0 ? "Edit Worklog" : "Add Worklog")</h3>
         
         <div class="form-group">
             <label>Date</label>
@@ -36,12 +36,10 @@
         <div class="form-group">
             <label>Task Type</label>
             <select value="@selectedTaskSelection" @onchange="HandleTaskSelectionChanged" class="form-control" @onkeydown="HandleKeyDown">
-                <option value="@BreakSelectionValue">Break</option>
                 @foreach (var task in AppState.AllTaskEntries.OrderBy(e => e.Category).ThenBy(e => e.Subcategory))
                 {
                     <option value="@task.Id">@FormatTaskOption(task)</option>
                 }
-                <option value="@CustomSelectionValue">Custom</option>
             </select>
         </div>
 
@@ -69,6 +67,17 @@
             }
             <button class="btn btn-secondary" @onclick="Close">Cancel</button>
         </div>
+
+        @if (showDuplicateWarning)
+        {
+            <div class="alert alert-warning mt-2">
+                A similar entry already exists for this task and time. Save anyway?
+                <div class="mt-1">
+                    <button class="btn btn-sm btn-warning" @onclick="SaveForced">Save Anyway</button>
+                    <button class="btn btn-sm btn-secondary ms-1" @onclick="DismissDuplicateWarning">Cancel</button>
+                </div>
+            </div>
+        }
 
         @if (showTicketPicker)
         {
@@ -113,13 +122,13 @@
     private string entryStartTime = "09:00";
     private List<string> timeOptions = new();
     private bool showTicketPicker;
+    private bool showDuplicateWarning;
     private List<TicketCache> favoriteTickets = new();
     private string selectedTaskSelection = CustomSelectionValue;
     private string selectedEstimatedEndTime = "09:00";
     private int? lastEntryId;
     private bool lastShowEstimatedEndOption;
 
-    private const string BreakSelectionValue = "__break__";
     private const string CustomSelectionValue = "__custom__";
 
     protected override void OnInitialized()
@@ -201,21 +210,18 @@
     {
         selectedTaskSelection = e.Value?.ToString() ?? CustomSelectionValue;
 
-        if (selectedTaskSelection == BreakSelectionValue)
-        {
-            Entry.Type = TaskType.Break;
-            Entry.Ticket = null;
-            return;
-        }
-
         if (int.TryParse(selectedTaskSelection, out var taskId))
         {
             var task = AppState.AllTaskEntries.FirstOrDefault(t => t.Id == taskId);
             if (task != null)
             {
-                Entry.Type = TaskType.Ticket;
+                Entry.Type = task.Category == "Break" ? TaskType.Break : TaskType.Ticket;
                 Entry.Ticket = task.Ticket;
                 Entry.Description = task.Description;
+                if (Entry.Type == TaskType.Break)
+                {
+                    Entry.Ticket = null;
+                }
             }
             return;
         }
@@ -255,6 +261,29 @@
     {
         Entry.Date = entryDate;
         Entry.StartTime = NormalizeTime(entryStartTime);
+
+        if (Entry.Id == 0 && AppState.IsDuplicateEntry(Entry))
+        {
+            showDuplicateWarning = true;
+            return;
+        }
+
+        await CommitSave();
+    }
+
+    private async Task SaveForced()
+    {
+        showDuplicateWarning = false;
+        await CommitSave();
+    }
+
+    private void DismissDuplicateWarning()
+    {
+        showDuplicateWarning = false;
+    }
+
+    private async Task CommitSave()
+    {
         await OnSave.InvokeAsync(Entry);
 
         if (ShowEstimatedEndOption)
@@ -317,7 +346,8 @@
     {
         if (Entry.Type == TaskType.Break)
         {
-            return BreakSelectionValue;
+            var breakTask = AppState.AllTaskEntries.FirstOrDefault(t => t.Category == "Break");
+            return breakTask?.Id.ToString() ?? CustomSelectionValue;
         }
 
         var match = AppState.AllTaskEntries.FirstOrDefault(task =>

@@ -16,15 +16,18 @@ builder.Services.AddScoped<IndexedDbService>();
 builder.Services.AddScoped<CsvExportService>();
 builder.Services.AddScoped<JiraTicketService>();
 builder.Services.AddScoped<NotificationService>();
+builder.Services.AddScoped<BackupService>();
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddSingleton<FallbackTimerService>();
 builder.Services.AddSingleton<TimerHubClient>();
+builder.Services.AddSingleton<BackupTimerService>();
 
 var host = builder.Build();
 
 var appState = host.Services.GetRequiredService<AppState>();
 var timerHub = host.Services.GetRequiredService<TimerHubClient>();
 var fallbackTimer = host.Services.GetRequiredService<FallbackTimerService>();
+var backupTimer = host.Services.GetRequiredService<BackupTimerService>();
 
 appState.WireUpTimerHub(timerHub);
 appState.WireUpFallbackTimer(fallbackTimer);
@@ -36,5 +39,7 @@ appState.OnServerConnectionChanged += connected =>
 
 await appState.InitializeAsync();
 await timerHub.StartAsync(serverUrl);
+
+backupTimer.Start();
 
 await host.RunAsync();

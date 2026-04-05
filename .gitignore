@@ -16,3 +16,5 @@ src/JtraServer/wwwroot/
 
 Thumbs.db
 .DS_Store
+.aider.*
+.aider*

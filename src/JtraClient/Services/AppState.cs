@@ -32,6 +32,16 @@ public class AppState
     public TimeSpan TodayTarget { get; private set; } = TimeSpan.FromHours(8);
     public TimeSpan TodayDeviation => TodayAccumulated - TodayTarget;
 
+    public IReadOnlyList<TimeEntry> TodayTimeEntries => TodayEntries;
+
+    private static readonly IReadOnlyList<TaskEntry> SeedTaskEntries = new[]
+    {
+        new TaskEntry { Category = "Default"},
+        new TaskEntry { Category = "Break" },
+        new TaskEntry { Category = "Holiday", Subcategory = "Public", Description = "Public Holiday" },
+        new TaskEntry { Category = "Holiday", Subcategory = "Personal", Ticket="TIME-156", Description = "Personal Holiday" },
+    };
+
     public AppState(IndexedDbService indexedDb, JiraTicketService jiraTicketService, ILogger<AppState> logger)
     {
         _indexedDb = indexedDb;
@@ -53,7 +63,7 @@ public class AppState
     public async Task InitializeAsync()
     {
         await _indexedDb.InitializeAsync();
-        
+
         Settings = await _indexedDb.GetSettingsAsync();
         AllEntries = await _indexedDb.GetTimeEntriesAsync();
         try
@@ -65,10 +75,12 @@ public class AppState
             _logger.LogWarning(ex, "Task entries could not be loaded during initialization.");
             AllTaskEntries = new List<TaskEntry>();
         }
-        
+
+        await SeedDefaultTaskEntriesAsync();
+
         var today = DateTime.Today.ToString("yyyy-MM-dd");
         TodayEntries = AllEntries.Where(e => e.Date == today).ToList();
-        
+
         var connectionState = await _indexedDb.GetConnectionStateAsync();
         if (connectionState != null)
         {
@@ -88,6 +100,29 @@ public class AppState
 
         CalculateNextCheckIn();
         NotifyStateChanged();
+    }
+
+    private async Task SeedDefaultTaskEntriesAsync()
+    {
+        foreach (var seed in SeedTaskEntries)
+        {
+            var exists = AllTaskEntries.Any(e =>
+                string.Equals(e.Category, seed.Category, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(e.Subcategory ?? string.Empty, seed.Subcategory ?? string.Empty, StringComparison.OrdinalIgnoreCase));
+
+            if (!exists)
+            {
+                var entry = new TaskEntry
+                {
+                    Category = seed.Category,
+                    Subcategory = seed.Subcategory,
+                    Ticket = seed.Ticket,
+                    Description = seed.Description,
+                };
+                entry.Id = await _indexedDb.AddTaskEntryAsync(entry);
+                AllTaskEntries.Add(entry);
+            }
+        }
     }
 
     private static string SafeParseTime(string? time)
@@ -343,6 +378,32 @@ public class AppState
         RebuildTodayEntries();
         await RecalculateAllEntriesAsync();
         NotifyStateChanged();
+    }
+
+    public async Task<bool> TryAddEntryWithoutDuplicates(TimeEntry entry, int toleranceMinutes = 5)
+    {
+        if (IsDuplicateEntry(entry, toleranceMinutes))
+        {
+            return false;
+        }
+
+        await AddNewEntryAsync(entry);
+        return true;
+    }
+
+    public bool IsDuplicateEntry(TimeEntry entry, int toleranceMinutes = 5)
+    {
+        if (!TimeSpan.TryParse(entry.StartTime, out var newStart))
+        {
+            return false;
+        }
+
+        return AllEntries.Any(existing =>
+            existing.Date == entry.Date &&
+            existing.Type == entry.Type &&
+            string.Equals(existing.Ticket ?? string.Empty, entry.Ticket ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
+            TimeSpan.TryParse(existing.StartTime, out var existingStart) &&
+            Math.Abs((newStart - existingStart).TotalMinutes) <= toleranceMinutes);
     }
 
     public async Task DeleteEntryAsync(int id)
