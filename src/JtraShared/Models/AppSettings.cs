@@ -7,7 +7,7 @@ public class AppSettings
     public string DefaultTargetHours { get; set; } = "08:00";
     public int NotificationIntervalMinutes { get; set; } = 15;
     public bool Use24HourFormat { get; set; } = true;
-    public string? Email { get; set; } = "roman.buchser@bottomline.com";
+    public string? Email { get; set; }
     public int BackupIntervalMinutes { get; set; } = 30;
     public int AutoConfirmBreakMinutes { get; set; } = 10;
     public bool CsvExportOldestFirst { get; set; } = true;
